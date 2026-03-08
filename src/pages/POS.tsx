@@ -94,6 +94,9 @@ export default function POS() {
   const [discountReason, setDiscountReason] = useState('');
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
   const [variantPickerItem, setVariantPickerItem] = useState<import('@/types/restaurant').MenuItem | null>(null);
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const [isSettling, setIsSettling] = useState(false);
+  const [isPrintingKitchen, setIsPrintingKitchen] = useState(false);
 
   const isEditingExistingOrder = !!currentEditingOrderId;
 
