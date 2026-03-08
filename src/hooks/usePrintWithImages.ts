@@ -4,10 +4,11 @@
 export function printWithImages(html: string, onPrinted?: () => void): void {
   const iframe = document.createElement('iframe');
   iframe.style.position = 'absolute';
-  iframe.style.width = '0';
+  iframe.style.width = '58mm';
   iframe.style.height = '0';
   iframe.style.border = 'none';
   iframe.style.left = '-9999px';
+  iframe.style.top = '0';
   document.body.appendChild(iframe);
 
   const iframeDoc = iframe.contentWindow?.document;
