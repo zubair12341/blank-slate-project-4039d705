@@ -2,36 +2,24 @@
 // This ensures images (like logos) are fully loaded before printing
 
 const THERMAL_PAPER_WIDTH_MM = 58;
-const PX_PER_INCH = 96;
-const MM_PER_INCH = 25.4;
 const IMAGE_LOAD_TIMEOUT_MS = 4000;
 const PRINT_CLEANUP_DELAY_MS = 800;
-
-const pxToMm = (pixels: number): number => (pixels * MM_PER_INCH) / PX_PER_INCH;
 
 const applyThermalPrintSizing = (doc: Document): void => {
   const body = doc.body;
   if (!body) return;
 
-  const root = doc.documentElement;
-  const contentHeightPx = Math.max(
-    body.scrollHeight,
-    body.offsetHeight,
-    root?.scrollHeight ?? 0,
-    root?.offsetHeight ?? 0,
-  );
-
-  const contentHeightMm = Math.max(40, Math.ceil(pxToMm(contentHeightPx) + 6));
   const style = doc.createElement('style');
   style.setAttribute('data-thermal-print-style', 'true');
   style.textContent = `
     @page {
-      size: ${THERMAL_PAPER_WIDTH_MM}mm ${contentHeightMm}mm !important;
+      size: ${THERMAL_PAPER_WIDTH_MM}mm auto !important;
       margin: 0 !important;
     }
 
     html, body {
       width: ${THERMAL_PAPER_WIDTH_MM}mm !important;
+      min-width: ${THERMAL_PAPER_WIDTH_MM}mm !important;
       max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important;
       margin: 0 !important;
       padding: 0 !important;
@@ -39,7 +27,8 @@ const applyThermalPrintSizing = (doc: Document): void => {
     }
 
     body {
-      min-height: ${contentHeightMm}mm !important;
+      height: auto !important;
+      min-height: 0 !important;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
