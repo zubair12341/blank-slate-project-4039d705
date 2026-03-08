@@ -1058,8 +1058,12 @@ export default function POS() {
             <Button variant="outline" onClick={() => setShowCheckout(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCompleteOrder}>
-              {isEditingExistingOrder ? 'Update' : 'Place Order'} ({formatPrice(total)})
+            <Button onClick={handleCompleteOrder} disabled={isPlacingOrder}>
+              {isPlacingOrder ? (
+                <><span className="animate-spin mr-2">⏳</span> Processing...</>
+              ) : (
+                <>{isEditingExistingOrder ? 'Update' : 'Place Order'} ({formatPrice(total)})</>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
