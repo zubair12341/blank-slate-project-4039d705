@@ -94,6 +94,9 @@ export default function POS() {
   const [discountReason, setDiscountReason] = useState('');
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
   const [variantPickerItem, setVariantPickerItem] = useState<import('@/types/restaurant').MenuItem | null>(null);
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const [isSettling, setIsSettling] = useState(false);
+  const [isPrintingKitchen, setIsPrintingKitchen] = useState(false);
 
   const isEditingExistingOrder = !!currentEditingOrderId;
 
@@ -204,12 +207,13 @@ export default function POS() {
   };
 
   const handleCompleteOrder = async () => {
-    // Safety check - cart should not be empty at this point
+    if (isPlacingOrder) return;
     if (cart.length === 0) {
       toast.error('Cart is empty. Please add items before placing order.');
       return;
     }
     
+    setIsPlacingOrder(true);
     let order: Order | null = null;
 
     try {
@@ -249,9 +253,11 @@ export default function POS() {
     } catch (error) {
       console.error('handleCompleteOrder error:', error);
       toast.error('Failed to process order. Please try again.');
+      setIsPlacingOrder(false);
       return;
     }
 
+    setIsPlacingOrder(false);
     if (order) {
       setCompletedOrder(order);
       setShowCheckout(false);
@@ -265,11 +271,18 @@ export default function POS() {
   };
 
   const handleSettleAndClose = async () => {
-    if (!completedOrder) return;
-    await settleOrder(completedOrder.id, undefined, completedOrder.tableId);
-    toast.success('Order settled and table freed!');
-    setCompletedOrder(null);
-    handleBackToOrderType();
+    if (!completedOrder || isSettling) return;
+    setIsSettling(true);
+    try {
+      await settleOrder(completedOrder.id, undefined, completedOrder.tableId);
+      toast.success('Order settled and table freed!');
+      setCompletedOrder(null);
+      handleBackToOrderType();
+    } catch (error) {
+      toast.error('Failed to settle order.');
+    } finally {
+      setIsSettling(false);
+    }
   };
 
   const handlePrintKitchenInvoice = () => {
@@ -281,6 +294,8 @@ export default function POS() {
   };
 
   const printKitchenInvoice = () => {
+    if (isPrintingKitchen) return;
+    setIsPrintingKitchen(true);
     const waiter = waiters.find((w) => w.id === selectedWaiterId);
     const table = tables.find((t) => t.id === selectedTableId);
 
@@ -352,6 +367,7 @@ export default function POS() {
 
     // Print using the utility function
     printWithImages(kitchenHtml, () => {
+      setIsPrintingKitchen(false);
       setShowKitchenInvoice(false);
       toast.success('Kitchen invoice printed!');
     });
@@ -1042,8 +1058,12 @@ export default function POS() {
             <Button variant="outline" onClick={() => setShowCheckout(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCompleteOrder}>
-              {isEditingExistingOrder ? 'Update' : 'Place Order'} ({formatPrice(total)})
+            <Button onClick={handleCompleteOrder} disabled={isPlacingOrder}>
+              {isPlacingOrder ? (
+                <><span className="animate-spin mr-2">⏳</span> Processing...</>
+              ) : (
+                <>{isEditingExistingOrder ? 'Update' : 'Place Order'} ({formatPrice(total)})</>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1144,9 +1164,9 @@ export default function POS() {
             <Button variant="outline" onClick={() => setShowKitchenInvoice(false)}>
               Cancel
             </Button>
-            <Button onClick={printKitchenInvoice}>
+            <Button onClick={printKitchenInvoice} disabled={isPrintingKitchen}>
               <Printer className="h-4 w-4 mr-2" />
-              Print
+              {isPrintingKitchen ? 'Printing...' : 'Print'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1199,8 +1219,8 @@ export default function POS() {
                 >
                   New Order
                 </Button>
-                <Button variant="default" onClick={handleSettleAndClose} className="flex-1">
-                  Settle & Close Table
+                <Button variant="default" onClick={handleSettleAndClose} disabled={isSettling} className="flex-1">
+                  {isSettling ? 'Settling...' : 'Settle & Close Table'}
                 </Button>
               </div>
             ) : (
