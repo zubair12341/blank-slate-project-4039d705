@@ -228,6 +228,48 @@ export function useSupabaseActions() {
     toast.success('Menu item deleted');
   };
 
+  // Menu Item Variant actions
+  const addMenuItemVariant = async (variant: { menuItemId: string; name: string; price: number; sortOrder: number; isAvailable: boolean }) => {
+    const { data, error } = await supabase
+      .from('menu_item_variants')
+      .insert({
+        menu_item_id: variant.menuItemId,
+        name: variant.name,
+        price: variant.price,
+        sort_order: variant.sortOrder,
+        is_available: variant.isAvailable,
+      })
+      .select()
+      .single();
+    if (error) {
+      toast.error('Failed to add variant');
+      throw error;
+    }
+    return data;
+  };
+
+  const updateMenuItemVariant = async (id: string, updates: { name?: string; price?: number; sortOrder?: number; isAvailable?: boolean }) => {
+    const dbUpdates: any = {};
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.price !== undefined) dbUpdates.price = updates.price;
+    if (updates.sortOrder !== undefined) dbUpdates.sort_order = updates.sortOrder;
+    if (updates.isAvailable !== undefined) dbUpdates.is_available = updates.isAvailable;
+
+    const { error } = await supabase.from('menu_item_variants').update(dbUpdates).eq('id', id);
+    if (error) {
+      toast.error('Failed to update variant');
+      throw error;
+    }
+  };
+
+  const deleteMenuItemVariant = async (id: string) => {
+    const { error } = await supabase.from('menu_item_variants').delete().eq('id', id);
+    if (error) {
+      toast.error('Failed to delete variant');
+      throw error;
+    }
+  };
+
   // Table actions
   const addTable = async (table: Omit<Table, 'id' | 'status'>) => {
     const { data, error } = await supabase
@@ -1111,6 +1153,10 @@ export function useSupabaseActions() {
     addMenuItem,
     updateMenuItem,
     deleteMenuItem,
+    // Variant actions
+    addMenuItemVariant,
+    updateMenuItemVariant,
+    deleteMenuItemVariant,
     // Table actions
     addTable,
     updateTable,

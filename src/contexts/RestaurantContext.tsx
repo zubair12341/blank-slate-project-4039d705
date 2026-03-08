@@ -118,6 +118,9 @@ interface RestaurantContextType {
   addMenuItem: (item: Omit<MenuItem, 'id' | 'createdAt' | 'updatedAt'>) => Promise<any>;
   updateMenuItem: (id: string, updates: Partial<MenuItem>) => Promise<void>;
   deleteMenuItem: (id: string) => Promise<void>;
+  addMenuItemVariant: (variant: { menuItemId: string; name: string; price: number; sortOrder: number; isAvailable: boolean }) => Promise<any>;
+  updateMenuItemVariant: (id: string, updates: { name?: string; price?: number; sortOrder?: number; isAvailable?: boolean }) => Promise<void>;
+  deleteMenuItemVariant: (id: string) => Promise<void>;
   addMenuCategory: (category: Omit<MenuCategory, 'id'>) => Promise<any>;
   updateMenuCategory: (id: string, updates: Partial<MenuCategory>) => Promise<void>;
   deleteMenuCategory: (id: string) => Promise<void>;
@@ -594,6 +597,9 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     addMenuItem: wrapAction(actions.addMenuItem),
     updateMenuItem: wrapAction(actions.updateMenuItem),
     deleteMenuItem: wrapAction(actions.deleteMenuItem),
+    addMenuItemVariant: wrapAction(actions.addMenuItemVariant),
+    updateMenuItemVariant: wrapAction(actions.updateMenuItemVariant),
+    deleteMenuItemVariant: wrapAction(actions.deleteMenuItemVariant),
     addMenuCategory: wrapAction(actions.addMenuCategory),
     updateMenuCategory: wrapAction(actions.updateMenuCategory),
     deleteMenuCategory: wrapAction(actions.deleteMenuCategory),
