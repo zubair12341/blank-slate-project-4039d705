@@ -1219,8 +1219,8 @@ export default function POS() {
                 >
                   New Order
                 </Button>
-                <Button variant="default" onClick={handleSettleAndClose} className="flex-1">
-                  Settle & Close Table
+                <Button variant="default" onClick={handleSettleAndClose} disabled={isSettling} className="flex-1">
+                  {isSettling ? 'Settling...' : 'Settle & Close Table'}
                 </Button>
               </div>
             ) : (
