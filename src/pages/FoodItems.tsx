@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Search, Edit2, Trash2, UtensilsCrossed } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, UtensilsCrossed, X } from 'lucide-react';
 import { useRestaurant } from '@/contexts/RestaurantContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,11 +9,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { MenuItem } from '@/types/restaurant';
+import { MenuItem, MenuItemVariant } from '@/types/restaurant';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 
+interface VariantFormData {
+  id?: string; // existing variant id
+  name: string;
+  price: string;
+  isAvailable: boolean;
+}
+
 export default function FoodItems() {
-  const { menuItems, menuCategories, settings, addMenuItem, updateMenuItem, deleteMenuItem } = useRestaurant();
+  const { menuItems, menuCategories, settings, addMenuItem, updateMenuItem, deleteMenuItem, addMenuItemVariant, updateMenuItemVariant, deleteMenuItemVariant } = useRestaurant();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -26,9 +33,14 @@ export default function FoodItems() {
     categoryId: '',
     isAvailable: true,
   });
+
+  const [hasVariants, setHasVariants] = useState(false);
+  const [variants, setVariants] = useState<VariantFormData[]>([]);
+  const [removedVariantIds, setRemovedVariantIds] = useState<string[]>([]);
   
   const [deleteTarget, setDeleteTarget] = useState<MenuItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const formatPrice = (price: number) => `${settings.currencySymbol} ${price.toLocaleString()}`;
 
@@ -39,6 +51,7 @@ export default function FoodItems() {
   });
 
   const handleOpenDialog = (item?: MenuItem) => {
+    setRemovedVariantIds([]);
     if (item) {
       setEditingItem(item);
       setFormData({
@@ -48,6 +61,14 @@ export default function FoodItems() {
         categoryId: item.categoryId,
         isAvailable: item.isAvailable,
       });
+      const itemVariants = item.variants || [];
+      setHasVariants(itemVariants.length > 0);
+      setVariants(itemVariants.sort((a, b) => a.sortOrder - b.sortOrder).map(v => ({
+        id: v.id,
+        name: v.name,
+        price: v.price.toString(),
+        isAvailable: v.isAvailable,
+      })));
     } else {
       setEditingItem(null);
       setFormData({
@@ -57,45 +78,139 @@ export default function FoodItems() {
         categoryId: menuCategories[0]?.id || '',
         isAvailable: true,
       });
+      setHasVariants(false);
+      setVariants([]);
     }
     setShowDialog(true);
   };
 
-  const handleSave = () => {
-    if (!formData.name || !formData.price || !formData.categoryId) {
+  const addVariantRow = () => {
+    setVariants(prev => [...prev, { name: '', price: '', isAvailable: true }]);
+  };
+
+  const updateVariantRow = (index: number, field: keyof VariantFormData, value: string | boolean) => {
+    setVariants(prev => prev.map((v, i) => i === index ? { ...v, [field]: value } : v));
+  };
+
+  const removeVariantRow = (index: number) => {
+    const variant = variants[index];
+    if (variant.id) {
+      setRemovedVariantIds(prev => [...prev, variant.id!]);
+    }
+    setVariants(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSave = async () => {
+    if (!formData.name || !formData.categoryId) {
       toast.error('Please fill in all required fields');
       return;
     }
 
-    const price = parseFloat(formData.price);
-    if (isNaN(price) || price <= 0) {
-      toast.error('Please enter a valid price');
-      return;
+    if (hasVariants) {
+      if (variants.length === 0) {
+        toast.error('Please add at least one variant or disable variants');
+        return;
+      }
+      for (const v of variants) {
+        if (!v.name || !v.price || isNaN(parseFloat(v.price)) || parseFloat(v.price) <= 0) {
+          toast.error('All variants must have a name and valid price');
+          return;
+        }
+      }
+    } else {
+      if (!formData.price) {
+        toast.error('Please enter a price');
+        return;
+      }
+      const price = parseFloat(formData.price);
+      if (isNaN(price) || price <= 0) {
+        toast.error('Please enter a valid price');
+        return;
+      }
     }
 
-    if (editingItem) {
-      updateMenuItem(editingItem.id, {
-        name: formData.name,
-        description: formData.description,
-        price,
-        categoryId: formData.categoryId,
-        isAvailable: formData.isAvailable,
-      });
-      toast.success('Food item updated');
-    } else {
-      addMenuItem({
-        name: formData.name,
-        description: formData.description,
-        price,
-        categoryId: formData.categoryId,
-        isAvailable: formData.isAvailable,
-        recipe: [],
-        recipeCost: 0,
-        profitMargin: 100,
-      });
-      toast.success('Food item added');
+    setIsSaving(true);
+    try {
+      const basePrice = hasVariants ? parseFloat(variants[0]?.price || '0') : parseFloat(formData.price);
+
+      if (editingItem) {
+        await updateMenuItem(editingItem.id, {
+          name: formData.name,
+          description: formData.description,
+          price: basePrice,
+          categoryId: formData.categoryId,
+          isAvailable: formData.isAvailable,
+        });
+
+        // Delete removed variants
+        for (const id of removedVariantIds) {
+          await deleteMenuItemVariant(id);
+        }
+
+        if (hasVariants) {
+          for (let i = 0; i < variants.length; i++) {
+            const v = variants[i];
+            if (v.id) {
+              await updateMenuItemVariant(v.id, {
+                name: v.name,
+                price: parseFloat(v.price),
+                sortOrder: i,
+                isAvailable: v.isAvailable,
+              });
+            } else {
+              await addMenuItemVariant({
+                menuItemId: editingItem.id,
+                name: v.name,
+                price: parseFloat(v.price),
+                sortOrder: i,
+                isAvailable: v.isAvailable,
+              });
+            }
+          }
+        } else {
+          // If variants toggled off, delete all remaining
+          const existingVariants = editingItem.variants || [];
+          for (const ev of existingVariants) {
+            if (!removedVariantIds.includes(ev.id)) {
+              await deleteMenuItemVariant(ev.id);
+            }
+          }
+        }
+
+        toast.success('Food item updated');
+      } else {
+        const result = await addMenuItem({
+          name: formData.name,
+          description: formData.description,
+          price: basePrice,
+          categoryId: formData.categoryId,
+          isAvailable: formData.isAvailable,
+          recipe: [],
+          recipeCost: 0,
+          profitMargin: 100,
+        });
+
+        if (hasVariants && result?.id) {
+          for (let i = 0; i < variants.length; i++) {
+            const v = variants[i];
+            await addMenuItemVariant({
+              menuItemId: result.id,
+              name: v.name,
+              price: parseFloat(v.price),
+              sortOrder: i,
+              isAvailable: v.isAvailable,
+            });
+          }
+        }
+
+        toast.success('Food item added');
+      }
+      setShowDialog(false);
+    } catch (error) {
+      console.error('Failed to save:', error);
+    } finally {
+      setIsSaving(false);
     }
-    setShowDialog(false);
   };
 
   const handleDeleteConfirm = async () => {
@@ -172,7 +287,6 @@ export default function FoodItems() {
               </div>
               <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{item.description}</p>
               
-              {/* Show variants if available */}
               {item.variants && item.variants.length > 0 ? (
                 <div className="mb-3">
                   <div className="flex flex-wrap gap-2">
@@ -228,7 +342,7 @@ export default function FoodItems() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingItem ? 'Edit Food Item' : 'Add Food Item'}</DialogTitle>
           </DialogHeader>
@@ -252,9 +366,69 @@ export default function FoodItems() {
                 rows={2}
               />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Category *</Label>
+              <Select value={formData.categoryId} onValueChange={(v) => setFormData({ ...formData, categoryId: v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {menuCategories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.icon} {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Variants toggle */}
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={hasVariants}
+                onCheckedChange={(checked) => {
+                  setHasVariants(checked);
+                  if (checked && variants.length === 0) {
+                    addVariantRow();
+                  }
+                }}
+              />
+              <Label>Has variants (e.g. Half/Full, Small/Medium/Large)</Label>
+            </div>
+
+            {hasVariants ? (
+              <div className="space-y-3 rounded-lg border p-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Variants</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={addVariantRow}>
+                    <Plus className="h-3 w-3 mr-1" /> Add Variant
+                  </Button>
+                </div>
+                {variants.map((v, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Input
+                      placeholder="Name (e.g. Half)"
+                      value={v.name}
+                      onChange={(e) => updateVariantRow(i, 'name', e.target.value)}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder="Price"
+                      type="number"
+                      min="0"
+                      value={v.price}
+                      onChange={(e) => updateVariantRow(i, 'price', e.target.value)}
+                      className="w-28"
+                    />
+                    <Button type="button" variant="ghost" size="icon" className="shrink-0 text-destructive" onClick={() => removeVariantRow(i)}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
               <div className="space-y-2">
-                <Label htmlFor="price">Price (Rs.) *</Label>
+                <Label htmlFor="price">Price ({settings.currencySymbol}) *</Label>
                 <Input
                   id="price"
                   type="number"
@@ -265,22 +439,8 @@ export default function FoodItems() {
                   placeholder="450"
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Category *</Label>
-                <Select value={formData.categoryId} onValueChange={(v) => setFormData({ ...formData, categoryId: v })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {menuCategories.map((cat) => (
-                      <SelectItem key={cat.id} value={cat.id}>
-                        {cat.icon} {cat.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            )}
+
             <div className="flex items-center gap-3">
               <Switch
                 checked={formData.isAvailable}
@@ -291,7 +451,9 @@ export default function FoodItems() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
-            <Button onClick={handleSave}>{editingItem ? 'Update' : 'Add'} Item</Button>
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? 'Saving...' : (editingItem ? 'Update' : 'Add')} Item
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
