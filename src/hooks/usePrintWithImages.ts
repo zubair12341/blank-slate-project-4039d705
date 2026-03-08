@@ -1,12 +1,65 @@
 // Utility hook for printing with proper image loading
 // This ensures images (like logos) are fully loaded before printing
 
+const THERMAL_PAPER_WIDTH_MM = 58;
+const PX_PER_INCH = 96;
+const MM_PER_INCH = 25.4;
+const IMAGE_LOAD_TIMEOUT_MS = 4000;
+const PRINT_CLEANUP_DELAY_MS = 800;
+
+const pxToMm = (pixels: number): number => (pixels * MM_PER_INCH) / PX_PER_INCH;
+
+const applyThermalPrintSizing = (doc: Document): void => {
+  const body = doc.body;
+  if (!body) return;
+
+  const root = doc.documentElement;
+  const contentHeightPx = Math.max(
+    body.scrollHeight,
+    body.offsetHeight,
+    root?.scrollHeight ?? 0,
+    root?.offsetHeight ?? 0,
+  );
+
+  const contentHeightMm = Math.max(40, Math.ceil(pxToMm(contentHeightPx) + 6));
+  const style = doc.createElement('style');
+  style.setAttribute('data-thermal-print-style', 'true');
+  style.textContent = `
+    @page {
+      size: ${THERMAL_PAPER_WIDTH_MM}mm ${contentHeightMm}mm !important;
+      margin: 0 !important;
+    }
+
+    html, body {
+      width: ${THERMAL_PAPER_WIDTH_MM}mm !important;
+      max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: visible !important;
+    }
+
+    body {
+      min-height: ${contentHeightMm}mm !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+  `;
+
+  if (doc.head) {
+    doc.head.appendChild(style);
+  } else {
+    body.insertAdjacentElement('beforebegin', style);
+  }
+};
+
 export function printWithImages(html: string, onPrinted?: () => void): void {
   const iframe = document.createElement('iframe');
-  iframe.style.position = 'absolute';
-  iframe.style.width = '58mm';
-  iframe.style.height = '0';
-  iframe.style.border = 'none';
+  iframe.style.position = 'fixed';
+  iframe.style.width = `${THERMAL_PAPER_WIDTH_MM}mm`;
+  iframe.style.height = '1px';
+  iframe.style.border = '0';
+  iframe.style.opacity = '0';
+  iframe.style.pointerEvents = 'none';
   iframe.style.left = '-9999px';
   iframe.style.top = '0';
   document.body.appendChild(iframe);
@@ -25,60 +78,62 @@ export function printWithImages(html: string, onPrinted?: () => void): void {
   iframeDoc.write(fullHtml);
   iframeDoc.close();
 
-  // Find all images in the iframe
-  const images = iframeDoc.querySelectorAll('img');
-  
-  if (images.length === 0) {
-    // No images, print immediately
-    iframe.contentWindow?.focus();
-    iframe.contentWindow?.print();
-    setTimeout(() => {
+  let hasPrinted = false;
+
+  const cleanup = () => {
+    if (iframe.parentNode) {
       document.body.removeChild(iframe);
-      onPrinted?.();
-    }, 1000);
+    }
+    onPrinted?.();
+  };
+
+  const triggerPrint = () => {
+    if (hasPrinted) return;
+    hasPrinted = true;
+
+    applyThermalPrintSizing(iframeDoc);
+
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      setTimeout(cleanup, PRINT_CLEANUP_DELAY_MS);
+    }, 120);
+  };
+
+  const images = iframeDoc.querySelectorAll('img');
+
+  if (images.length === 0) {
+    triggerPrint();
     return;
   }
 
-  // Wait for all images to load before printing
   let loadedCount = 0;
   const totalImages = images.length;
 
-  const checkAllLoaded = () => {
-    loadedCount++;
+  const markLoaded = () => {
+    loadedCount += 1;
     if (loadedCount >= totalImages) {
-      // All images loaded, now print
-      setTimeout(() => {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-        setTimeout(() => {
-          document.body.removeChild(iframe);
-          onPrinted?.();
-        }, 1000);
-      }, 100); // Small delay to ensure rendering is complete
+      triggerPrint();
     }
   };
 
   images.forEach((img) => {
     if (img.complete) {
-      checkAllLoaded();
-    } else {
-      img.onload = checkAllLoaded;
-      img.onerror = checkAllLoaded; // Count errors as loaded to avoid hanging
+      markLoaded();
+      return;
     }
+
+    img.onload = markLoaded;
+    img.onerror = markLoaded;
   });
 
-  // Fallback timeout in case images take too long
   setTimeout(() => {
-    if (loadedCount < totalImages) {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-      setTimeout(() => {
-        document.body.removeChild(iframe);
-        onPrinted?.();
-      }, 1000);
+    if (!hasPrinted) {
+      triggerPrint();
     }
-  }, 3000);
+  }, IMAGE_LOAD_TIMEOUT_MS);
 }
+
 
 // Loud notification sound for kitchen invoice (longer, louder beep)
 export function playKitchenNotificationSound(): void {
