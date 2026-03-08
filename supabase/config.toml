@@ -1,1 +1,4 @@
-project_id = "wzmraketqyzvpagcdyyy"
+project_id = "kbcsrbacakarlrubafpm"
+
+[functions.table-update]
+verify_jwt = false
