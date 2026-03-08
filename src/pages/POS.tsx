@@ -294,6 +294,8 @@ export default function POS() {
   };
 
   const printKitchenInvoice = () => {
+    if (isPrintingKitchen) return;
+    setIsPrintingKitchen(true);
     const waiter = waiters.find((w) => w.id === selectedWaiterId);
     const table = tables.find((t) => t.id === selectedTableId);
 
@@ -365,6 +367,7 @@ export default function POS() {
 
     // Print using the utility function
     printWithImages(kitchenHtml, () => {
+      setIsPrintingKitchen(false);
       setShowKitchenInvoice(false);
       toast.success('Kitchen invoice printed!');
     });
