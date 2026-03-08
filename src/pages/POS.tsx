@@ -1164,9 +1164,9 @@ export default function POS() {
             <Button variant="outline" onClick={() => setShowKitchenInvoice(false)}>
               Cancel
             </Button>
-            <Button onClick={printKitchenInvoice}>
+            <Button onClick={printKitchenInvoice} disabled={isPrintingKitchen}>
               <Printer className="h-4 w-4 mr-2" />
-              Print
+              {isPrintingKitchen ? 'Printing...' : 'Print'}
             </Button>
           </DialogFooter>
         </DialogContent>
