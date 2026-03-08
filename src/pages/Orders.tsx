@@ -121,7 +121,7 @@ export default function Orders() {
 
   const handlePrintInvoice = (order: Order) => {
     const logoHtml = settings.invoice?.showLogo && settings.invoice?.logoUrl 
-      ? `<div style="text-align: center; margin-bottom: 10px;"><img src="${settings.invoice.logoUrl}" alt="Logo" style="max-height: 60px; object-fit: contain;" /></div>` 
+      ? `<div style="text-align: center; margin: 0; padding: 0; line-height: 0;"><img src="${settings.invoice.logoUrl}" alt="Logo" style="display: block; margin: 0 auto; max-height: 60px; object-fit: contain;" /></div>` 
       : '';
 
     const invoiceHtml = `
