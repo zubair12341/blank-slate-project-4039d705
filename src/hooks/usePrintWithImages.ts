@@ -13,8 +13,9 @@ const applyThermalPrintSizing = (doc: Document): void => {
   style.setAttribute('data-thermal-print-style', 'true');
   style.textContent = `
     @page {
+      size: ${THERMAL_PAPER_WIDTH_MM}mm auto !important;
       margin: 0 !important;
-    }
+      padding: 0 !important;
     }
 
     html, body {
@@ -32,6 +33,11 @@ const applyThermalPrintSizing = (doc: Document): void => {
       transform: none !important;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
+    }
+
+    body > *:first-child {
+      margin-top: 0 !important;
+      padding-top: 0 !important;
     }
   `;
 

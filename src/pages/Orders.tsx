@@ -144,8 +144,9 @@ export default function Orders() {
             .grand-total { font-size: 14px; font-weight: 900; border-top: 2px solid #000; padding-top: 4px; margin-top: 4px; }
             .footer { text-align: center; font-size: 10px; margin-top: 4px; font-weight: 700; }
             @media print {
-              @page { margin: 0 !important; }
+              @page { size: 72mm auto !important; margin: 0 !important; padding: 0 !important; }
               html, body { margin: 0 !important; padding: 0 !important; width: 72mm !important; }
+              body > *:first-child { margin-top: 0 !important; padding-top: 0 !important; }
             }
           </style>
         </head>
