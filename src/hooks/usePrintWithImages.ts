@@ -57,7 +57,7 @@ export function printWithImages(html: string, onPrinted?: () => void): void {
   iframe.style.opacity = '0';
   iframe.style.pointerEvents = 'none';
   iframe.style.left = '-9999px';
-  iframe.style.top = '0';
+  iframe.style.top = '-9999px';
   document.body.appendChild(iframe);
 
   const iframeDoc = iframe.contentWindow?.document;
