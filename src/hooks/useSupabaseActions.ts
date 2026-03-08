@@ -1111,6 +1111,10 @@ export function useSupabaseActions() {
     addMenuItem,
     updateMenuItem,
     deleteMenuItem,
+    // Variant actions
+    addMenuItemVariant,
+    updateMenuItemVariant,
+    deleteMenuItemVariant,
     // Table actions
     addTable,
     updateTable,
