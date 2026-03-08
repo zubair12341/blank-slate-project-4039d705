@@ -349,3 +349,21 @@
     @apply bg-muted-foreground/30;
   }
 }
+
+@media print {
+  @page {
+    margin: 0;
+    padding: 0;
+    size: 80mm auto;
+  }
+
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
