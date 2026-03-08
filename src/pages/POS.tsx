@@ -289,10 +289,10 @@ export default function POS() {
         <head>
           <title>Kitchen Order</title>
           <style>
-            html, body { margin: 0 !important; padding: 0 !important; width: 58mm; }
-            body { font-family: 'Courier New', monospace; width: 58mm; max-width: 58mm; font-weight: 700; color: #000; }
+            html, body { margin: 0 !important; padding: 0 !important; width: 72mm; }
+            body { font-family: 'Courier New', monospace; width: 72mm; max-width: 72mm; font-weight: 700; color: #000; }
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            .receipt { width: 58mm; margin: 0; padding: 0; }
+            .receipt { width: 72mm; margin: 0; padding: 0; }
             .header { text-align: center; border-bottom: 2px dashed #000; padding: 0 0 4px 0; margin: 0 0 4px 0; }
             .header h1 { font-size: 16px; margin: 0; font-weight: 900; }
             .header p { font-size: 11px; margin: 2px 0 0 0; font-weight: 700; }
@@ -305,8 +305,8 @@ export default function POS() {
             .notes { font-size: 11px; color: #000; margin-left: 8px; font-weight: 700; }
             .footer { text-align: center; font-size: 11px; margin-top: 4px; font-weight: 700; }
             @media print {
-              @page { margin: 0 !important; size: 58mm auto; }
-              html, body, .receipt { margin: 0 !important; padding: 0 !important; width: 58mm !important; }
+              @page { margin: 0 !important; }
+              html, body, .receipt { margin: 0 !important; padding: 0 !important; width: 72mm !important; }
             }
           </style>
         </head>
@@ -369,8 +369,8 @@ export default function POS() {
         <head>
           <title>Invoice - ${completedOrder.orderNumber}</title>
           <style>
-            html, body { margin: 0 !important; padding: 0 !important; width: 58mm; }
-            body { font-family: 'Courier New', monospace; width: 58mm; max-width: 58mm; margin: 0; padding: 0; font-weight: 700; color: #000; }
+            html, body { margin: 0 !important; padding: 0 !important; width: 72mm; }
+            body { font-family: 'Courier New', monospace; width: 72mm; max-width: 72mm; margin: 0; padding: 0; font-weight: 700; color: #000; }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             .header { text-align: center; border-bottom: 2px dashed #000; padding: 0 0 4px 0; margin: 0 0 4px 0; }
             .header h1 { font-size: 15px; margin: 0; font-weight: 900; }
@@ -384,8 +384,8 @@ export default function POS() {
             .grand-total { font-size: 14px; font-weight: 900; border-top: 2px solid #000; padding-top: 4px; margin-top: 4px; }
             .footer { text-align: center; font-size: 10px; margin-top: 4px; font-weight: 700; }
             @media print {
-              @page { margin: 0 !important; size: 58mm auto; }
-              html, body { margin: 0 !important; padding: 0 !important; width: 58mm !important; }
+              @page { margin: 0 !important; }
+              html, body { margin: 0 !important; padding: 0 !important; width: 72mm !important; }
             }
           </style>
         </head>
