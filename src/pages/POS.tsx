@@ -271,11 +271,18 @@ export default function POS() {
   };
 
   const handleSettleAndClose = async () => {
-    if (!completedOrder) return;
-    await settleOrder(completedOrder.id, undefined, completedOrder.tableId);
-    toast.success('Order settled and table freed!');
-    setCompletedOrder(null);
-    handleBackToOrderType();
+    if (!completedOrder || isSettling) return;
+    setIsSettling(true);
+    try {
+      await settleOrder(completedOrder.id, undefined, completedOrder.tableId);
+      toast.success('Order settled and table freed!');
+      setCompletedOrder(null);
+      handleBackToOrderType();
+    } catch (error) {
+      toast.error('Failed to settle order.');
+    } finally {
+      setIsSettling(false);
+    }
   };
 
   const handlePrintKitchenInvoice = () => {
