@@ -207,12 +207,13 @@ export default function POS() {
   };
 
   const handleCompleteOrder = async () => {
-    // Safety check - cart should not be empty at this point
+    if (isPlacingOrder) return;
     if (cart.length === 0) {
       toast.error('Cart is empty. Please add items before placing order.');
       return;
     }
     
+    setIsPlacingOrder(true);
     let order: Order | null = null;
 
     try {
@@ -252,9 +253,11 @@ export default function POS() {
     } catch (error) {
       console.error('handleCompleteOrder error:', error);
       toast.error('Failed to process order. Please try again.');
+      setIsPlacingOrder(false);
       return;
     }
 
+    setIsPlacingOrder(false);
     if (order) {
       setCompletedOrder(order);
       setShowCheckout(false);
