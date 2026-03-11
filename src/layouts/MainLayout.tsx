@@ -9,6 +9,7 @@ import { AppSidebar } from '@/components/AppSidebar';
 import { Button } from '@/components/ui/button';
 import { CalculatorModal } from '@/components/CalculatorModal';
 import { useOrderNotifications } from '@/hooks/useOrderNotifications';
+import { OnlineStatusIndicator } from '@/components/OnlineStatusIndicator';
 
 
 export default function MainLayout() {
