@@ -74,28 +74,22 @@ export async function getDb(): Promise<IDBPDatabase<OfflineDBSchema>> {
 
 // ── Cache helpers ──────────────────────────────────────────────
 
-export async function cacheTableData(
-  storeName: keyof Omit<OfflineDBSchema, 'sync_queue' | 'meta'>,
-  rows: any[]
-) {
+type DataStoreNames = 'ingredients' | 'menu_categories' | 'menu_items' | 'menu_item_variants' |
+  'restaurant_tables' | 'waiters' | 'orders' | 'order_items' | 'restaurant_settings' |
+  'stock_purchases' | 'stock_transfers' | 'stock_removals' | 'stock_sales';
+
+export async function cacheTableData(storeName: DataStoreNames, rows: any[]) {
   const db = await getDb();
   const tx = db.transaction(storeName, 'readwrite');
   const store = tx.objectStore(storeName);
-
-  // Clear old data
   await store.clear();
-
-  // Write new data
   for (const row of rows) {
     await store.put(row);
   }
-
   await tx.done;
 }
 
-export async function getCachedData(
-  storeName: keyof Omit<OfflineDBSchema, 'sync_queue' | 'meta'>
-): Promise<any[]> {
+export async function getCachedData(storeName: DataStoreNames): Promise<any[]> {
   const db = await getDb();
   return db.getAll(storeName);
 }
