@@ -18,11 +18,37 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const AUTH_CACHE_KEY = 'pos-auth-cache';
+
 const rolePermissions: Record<AppRole, string[]> = {
   admin: ['dashboard', 'pos', 'food-items', 'ingredients', 'recipes', 'store-stock', 'kitchen-stock', 'orders', 'reports', 'settings', 'staff', 'daily-costs'],
   manager: ['dashboard', 'pos', 'food-items', 'ingredients', 'recipes', 'store-stock', 'kitchen-stock', 'orders', 'reports', 'daily-costs'],
   pos_user: ['pos', 'orders'],
 };
+
+// Cache auth details to localStorage for offline use
+function cacheAuthDetails(role: AppRole | null, name: string | null) {
+  try {
+    localStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ role, name, timestamp: Date.now() }));
+  } catch { /* ignore */ }
+}
+
+function getCachedAuthDetails(): { role: AppRole | null; name: string | null } | null {
+  try {
+    const cached = localStorage.getItem(AUTH_CACHE_KEY);
+    if (!cached) return null;
+    const parsed = JSON.parse(cached);
+    // Cache valid for 30 days
+    if (Date.now() - parsed.timestamp > 30 * 24 * 60 * 60 * 1000) return null;
+    return { role: parsed.role, name: parsed.name };
+  } catch {
+    return null;
+  }
+}
+
+function clearCachedAuthDetails() {
+  try { localStorage.removeItem(AUTH_CACHE_KEY); } catch { /* ignore */ }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -38,7 +64,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         
-        // Defer Supabase calls with setTimeout to prevent deadlock
         if (session?.user) {
           setTimeout(() => {
             fetchUserDetails(session.user.id);
@@ -60,6 +85,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setIsLoading(false);
       }
+    }).catch(() => {
+      // Offline: try to restore from Supabase's persisted session + our cached role
+      const cachedSession = session; // Already set from onAuthStateChange if available
+      if (!cachedSession) {
+        // Check if we have a cached user from Supabase's localStorage persistence
+        const cached = getCachedAuthDetails();
+        if (cached?.role) {
+          // Supabase persists session in localStorage, so user may still be available
+          setUserRole(cached.role);
+          setUserName(cached.name);
+        }
+      }
+      setIsLoading(false);
     });
 
     return () => subscription.unsubscribe();
@@ -88,14 +126,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (profileData?.name) {
         setUserName(profileData.name);
       }
+
+      // Cache for offline use
+      cacheAuthDetails(
+        (roleData?.role as AppRole) || null,
+        profileData?.name || null
+      );
     } catch (error) {
       console.error('Error fetching user details:', error);
+      // Offline fallback: use cached auth details
+      if (!navigator.onLine) {
+        const cached = getCachedAuthDetails();
+        if (cached) {
+          if (cached.role) setUserRole(cached.role);
+          if (cached.name) setUserName(cached.name);
+          console.log('[Offline] Using cached auth details');
+        }
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   const signIn = async (email: string, password: string) => {
+    if (!navigator.onLine) {
+      return { error: new Error('Cannot sign in while offline. Please connect to the internet first.') };
+    }
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -113,11 +169,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch { /* ignore if offline */ }
     setUser(null);
     setSession(null);
     setUserRole(null);
     setUserName(null);
+    clearCachedAuthDetails();
     toast.success('Logged out successfully');
   };
 
