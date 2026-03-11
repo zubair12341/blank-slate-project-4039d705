@@ -293,34 +293,42 @@ export default function POS() {
     setShowKitchenInvoice(true);
   };
 
-  const buildKitchenSlipHtml = (
-    itemName: string,
-    quantity: number,
-    notes: string | undefined,
+  const buildCategoryKitchenSlipHtml = (
+    categoryName: string,
+    items: { name: string; quantity: number; notes?: string }[],
     meta: { waiterName?: string; tableName?: string; customerName?: string; orderTypeName?: string }
-  ) => `
-    <html>
+  ) => {
+    const itemsHtml = items.map(item => `
+      <div class="item">
+        <span class="item-name">${item.name}</span>
+        <span class="item-qty">x${item.quantity}</span>
+        ${item.notes ? `<div class="notes">Note: ${item.notes}</div>` : ''}
+      </div>
+    `).join('');
+
+    return `<html>
       <head>
-        <title>Kitchen Order</title>
+        <title>Kitchen Order - ${categoryName}</title>
         <style>
           html, body { margin: 0 !important; padding: 0 !important; width: 72mm; }
           body { font-family: 'Courier New', monospace; width: 72mm; max-width: 72mm; font-weight: 700; color: #000; }
           * { margin: 0; padding: 0; box-sizing: border-box; }
-          .receipt { width: 72mm; margin: 0; padding: 0; }
           .header { text-align: center; border-bottom: 2px dashed #000; padding: 0 0 4px 0; margin: 0 0 4px 0; }
           .header h1 { font-size: 16px; margin: 0; font-weight: 900; }
           .header p { font-size: 11px; margin: 2px 0 0 0; font-weight: 700; }
+          .section-name { text-align: center; font-size: 14px; font-weight: 900; margin: 6px 0; padding: 4px; background: #000; color: #fff; }
           .info { margin: 4px 0; font-size: 12px; }
           .info-row { display: flex; justify-content: space-between; margin: 2px 0; font-weight: 700; }
           .items { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 8px 0; margin: 4px 0; }
-          .item { text-align: center; margin: 4px 0; }
+          .item { text-align: center; margin: 8px 0; padding-bottom: 6px; border-bottom: 1px dotted #999; }
+          .item:last-child { border-bottom: none; padding-bottom: 0; }
           .item-name { font-size: 16px; font-weight: 900; display: block; }
           .item-qty { font-size: 22px; font-weight: 900; display: block; margin-top: 4px; }
           .notes { font-size: 12px; color: #000; margin-top: 4px; font-weight: 700; text-align: center; }
           .footer { text-align: center; font-size: 11px; margin-top: 4px; font-weight: 700; }
           @media print {
             @page { size: 72mm auto !important; margin: 0 !important; padding: 0 !important; }
-            html, body, .receipt { margin: 0 !important; padding: 0 !important; width: 72mm !important; }
+            html, body { margin: 0 !important; padding: 0 !important; width: 72mm !important; }
             body > *:first-child { margin-top: 0 !important; padding-top: 0 !important; }
           }
         </style>
@@ -331,6 +339,7 @@ export default function POS() {
           <p>${settings.name}</p>
           <p>${new Date().toLocaleString('en-PK')}</p>
         </div>
+        <div class="section-name">📌 ${categoryName.toUpperCase()}</div>
         <div class="info">
           <div class="info-row"><strong>Order Type:</strong> <span>${meta.orderTypeName}</span></div>
           ${meta.tableName ? `<div class="info-row"><strong>Table:</strong> <span>${meta.tableName}</span></div>` : ''}
@@ -338,18 +347,14 @@ export default function POS() {
           ${meta.customerName ? `<div class="info-row"><strong>Customer:</strong> <span>${meta.customerName}</span></div>` : ''}
         </div>
         <div class="items">
-          <div class="item">
-            <span class="item-name">${itemName}</span>
-            <span class="item-qty">x${quantity}</span>
-          </div>
-          ${notes ? `<div class="notes">Note: ${notes}</div>` : ''}
+          ${itemsHtml}
         </div>
         <div class="footer">
           <p>*** KITCHEN COPY ***</p>
         </div>
       </body>
-    </html>
-  `;
+    </html>`;
+  };
 
   const printKitchenInvoice = () => {
     if (isPrintingKitchen) return;
@@ -364,13 +369,26 @@ export default function POS() {
       customerName: customerName || '',
     };
 
-    // Build individual slips for each cart item
-    const slips = cart.map((item) => {
+    // Group cart items by their menu category
+    const groupedByCategory = new Map<string, { categoryName: string; items: { name: string; quantity: number; notes?: string }[] }>();
+
+    cart.forEach((item) => {
+      const catId = item.menuItem.categoryId || 'uncategorized';
+      const catName = menuCategories.find((c) => c.id === item.menuItem.categoryId)?.name || 'Other';
       const displayName = item.variant
         ? `${item.menuItem.name} (${item.variant.name})`
         : item.menuItem.name;
-      return buildKitchenSlipHtml(displayName, item.quantity, item.notes, meta);
+
+      if (!groupedByCategory.has(catId)) {
+        groupedByCategory.set(catId, { categoryName: catName, items: [] });
+      }
+      groupedByCategory.get(catId)!.items.push({ name: displayName, quantity: item.quantity, notes: item.notes });
     });
+
+    // Build one slip per category
+    const slips = Array.from(groupedByCategory.values()).map((group) =>
+      buildCategoryKitchenSlipHtml(group.categoryName, group.items, meta)
+    );
 
     // Play loud kitchen notification sound
     playKitchenNotificationSound();
@@ -381,12 +399,11 @@ export default function POS() {
       if (printIndex >= slips.length) {
         setIsPrintingKitchen(false);
         setShowKitchenInvoice(false);
-        toast.success(`${slips.length} kitchen slip(s) printed!`);
+        toast.success(`${slips.length} kitchen slip(s) printed for ${slips.length} section(s)!`);
         return;
       }
       printWithImages(slips[printIndex], () => {
         printIndex++;
-        // Small delay between prints to avoid browser blocking
         setTimeout(printNext, 500);
       });
     };
