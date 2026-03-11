@@ -293,85 +293,104 @@ export default function POS() {
     setShowKitchenInvoice(true);
   };
 
+  const buildKitchenSlipHtml = (
+    itemName: string,
+    quantity: number,
+    notes: string | undefined,
+    meta: { waiterName?: string; tableName?: string; customerName?: string; orderTypeName?: string }
+  ) => `
+    <html>
+      <head>
+        <title>Kitchen Order</title>
+        <style>
+          html, body { margin: 0 !important; padding: 0 !important; width: 72mm; }
+          body { font-family: 'Courier New', monospace; width: 72mm; max-width: 72mm; font-weight: 700; color: #000; }
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          .receipt { width: 72mm; margin: 0; padding: 0; }
+          .header { text-align: center; border-bottom: 2px dashed #000; padding: 0 0 4px 0; margin: 0 0 4px 0; }
+          .header h1 { font-size: 16px; margin: 0; font-weight: 900; }
+          .header p { font-size: 11px; margin: 2px 0 0 0; font-weight: 700; }
+          .info { margin: 4px 0; font-size: 12px; }
+          .info-row { display: flex; justify-content: space-between; margin: 2px 0; font-weight: 700; }
+          .items { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 8px 0; margin: 4px 0; }
+          .item { text-align: center; margin: 4px 0; }
+          .item-name { font-size: 16px; font-weight: 900; display: block; }
+          .item-qty { font-size: 22px; font-weight: 900; display: block; margin-top: 4px; }
+          .notes { font-size: 12px; color: #000; margin-top: 4px; font-weight: 700; text-align: center; }
+          .footer { text-align: center; font-size: 11px; margin-top: 4px; font-weight: 700; }
+          @media print {
+            @page { size: 72mm auto !important; margin: 0 !important; padding: 0 !important; }
+            html, body, .receipt { margin: 0 !important; padding: 0 !important; width: 72mm !important; }
+            body > *:first-child { margin-top: 0 !important; padding-top: 0 !important; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>🍳 KITCHEN ORDER</h1>
+          <p>${settings.name}</p>
+          <p>${new Date().toLocaleString('en-PK')}</p>
+        </div>
+        <div class="info">
+          <div class="info-row"><strong>Order Type:</strong> <span>${meta.orderTypeName}</span></div>
+          ${meta.tableName ? `<div class="info-row"><strong>Table:</strong> <span>${meta.tableName}</span></div>` : ''}
+          ${meta.waiterName ? `<div class="info-row"><strong>Waiter:</strong> <span>${meta.waiterName}</span></div>` : ''}
+          ${meta.customerName ? `<div class="info-row"><strong>Customer:</strong> <span>${meta.customerName}</span></div>` : ''}
+        </div>
+        <div class="items">
+          <div class="item">
+            <span class="item-name">${itemName}</span>
+            <span class="item-qty">x${quantity}</span>
+          </div>
+          ${notes ? `<div class="notes">Note: ${notes}</div>` : ''}
+        </div>
+        <div class="footer">
+          <p>*** KITCHEN COPY ***</p>
+        </div>
+      </body>
+    </html>
+  `;
+
   const printKitchenInvoice = () => {
     if (isPrintingKitchen) return;
     setIsPrintingKitchen(true);
     const waiter = waiters.find((w) => w.id === selectedWaiterId);
     const table = tables.find((t) => t.id === selectedTableId);
 
-    const kitchenHtml = `
-      <html>
-        <head>
-          <title>Kitchen Order</title>
-          <style>
-            html, body { margin: 0 !important; padding: 0 !important; width: 72mm; }
-            body { font-family: 'Courier New', monospace; width: 72mm; max-width: 72mm; font-weight: 700; color: #000; }
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            .receipt { width: 72mm; margin: 0; padding: 0; }
-            .header { text-align: center; border-bottom: 2px dashed #000; padding: 0 0 4px 0; margin: 0 0 4px 0; }
-            .header h1 { font-size: 16px; margin: 0; font-weight: 900; }
-            .header p { font-size: 11px; margin: 2px 0 0 0; font-weight: 700; }
-            .info { margin: 4px 0; font-size: 12px; }
-            .info-row { display: flex; justify-content: space-between; margin: 2px 0; font-weight: 700; }
-            .items { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 4px 0; margin: 4px 0; }
-            .item { display: flex; justify-content: space-between; margin: 4px 0; font-size: 13px; }
-            .item-name { font-weight: 900; }
-            .item-qty { font-size: 16px; font-weight: 900; }
-            .notes { font-size: 11px; color: #000; margin-left: 8px; font-weight: 700; }
-            .footer { text-align: center; font-size: 11px; margin-top: 4px; font-weight: 700; }
-            @media print {
-              @page { size: 72mm auto !important; margin: 0 !important; padding: 0 !important; }
-              html, body, .receipt { margin: 0 !important; padding: 0 !important; width: 72mm !important; }
-              body > *:first-child { margin-top: 0 !important; padding-top: 0 !important; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>🍳 KITCHEN ORDER</h1>
-            <p>${settings.name}</p>
-            <p>${new Date().toLocaleString('en-PK')}</p>
-          </div>
-          <div class="info">
-            <div class="info-row"><strong>Order Type:</strong> <span>${orderType?.toUpperCase()}</span></div>
-            ${table ? `<div class="info-row"><strong>Table:</strong> <span>#${table.number}</span></div>` : ''}
-            ${waiter ? `<div class="info-row"><strong>Waiter:</strong> <span>${waiter.name}</span></div>` : ''}
-            ${customerName ? `<div class="info-row"><strong>Customer:</strong> <span>${customerName}</span></div>` : ''}
-          </div>
-          <div class="items">
-            ${cart
-              .map(
-                (item) => {
-                  const displayName = item.variant 
-                    ? `${item.menuItem.name} (${item.variant.name})`
-                    : item.menuItem.name;
-                  return `
-              <div class="item">
-                <span class="item-name">${displayName}</span>
-                <span class="item-qty">x${item.quantity}</span>
-              </div>
-              ${item.notes ? `<div class="notes">Note: ${item.notes}</div>` : ''}
-            `;
-                }
-              )
-              .join('')}
-          </div>
-          <div class="footer">
-            <p>*** KITCHEN COPY ***</p>
-          </div>
-        </body>
-      </html>
-    `;
+    const meta = {
+      orderTypeName: orderType?.toUpperCase() || '',
+      tableName: table ? `#${table.number}` : '',
+      waiterName: waiter?.name || '',
+      customerName: customerName || '',
+    };
+
+    // Build individual slips for each cart item
+    const slips = cart.map((item) => {
+      const displayName = item.variant
+        ? `${item.menuItem.name} (${item.variant.name})`
+        : item.menuItem.name;
+      return buildKitchenSlipHtml(displayName, item.quantity, item.notes, meta);
+    });
 
     // Play loud kitchen notification sound
     playKitchenNotificationSound();
 
-    // Print using the utility function
-    printWithImages(kitchenHtml, () => {
-      setIsPrintingKitchen(false);
-      setShowKitchenInvoice(false);
-      toast.success('Kitchen invoice printed!');
-    });
+    // Print slips one after another
+    let printIndex = 0;
+    const printNext = () => {
+      if (printIndex >= slips.length) {
+        setIsPrintingKitchen(false);
+        setShowKitchenInvoice(false);
+        toast.success(`${slips.length} kitchen slip(s) printed!`);
+        return;
+      }
+      printWithImages(slips[printIndex], () => {
+        printIndex++;
+        // Small delay between prints to avoid browser blocking
+        setTimeout(printNext, 500);
+      });
+    };
+    printNext();
   };
 
   const printCustomerInvoice = () => {
