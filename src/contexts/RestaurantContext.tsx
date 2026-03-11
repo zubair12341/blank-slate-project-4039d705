@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useMemo } from
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseData } from '@/hooks/useSupabaseData';
 import { useSupabaseActions } from '@/hooks/useSupabaseActions';
+import { addToSyncQueue, cacheTableData, getCachedData } from '@/lib/offlineDb';
 import {
   Ingredient,
   MenuItem,
@@ -408,34 +409,167 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   
   // Wrapped actions
   const completeOrder = useCallback(async (orderDetails: any): Promise<Order | null> => {
-    // Capture cart snapshot before any async operations
     const cartSnapshot = [...cart];
     if (cartSnapshot.length === 0) {
       console.error('completeOrder: Cart is empty');
       return null;
     }
-    
-    try {
-      const result = await actions.createOrder(
-        cartSnapshot,
-        orderDetails,
-        settings,
-        data.tables,
-        data.waiters,
-        data.ingredients
-      );
-      if (result) {
-        // Only clear cart after successful order creation
-        clearCart();
-        // Fetch the order with items immediately for the completion modal
-        const order = await fetchOrderWithItems(result.id);
-        // Background refetch to update local state
-        data.refetch();
-        return order;
+
+    // ── Online path: normal Supabase flow ──
+    if (navigator.onLine) {
+      try {
+        const result = await actions.createOrder(
+          cartSnapshot,
+          orderDetails,
+          settings,
+          data.tables,
+          data.waiters,
+          data.ingredients
+        );
+        if (result) {
+          clearCart();
+          const order = await fetchOrderWithItems(result.id);
+          data.refetch();
+          return order;
+        }
+        return null;
+      } catch (error) {
+        console.error('completeOrder online error:', error);
+        // Fall through to offline path
       }
-      return null;
-    } catch (error) {
-      console.error('completeOrder error:', error);
+    }
+
+    // ── Offline path: save to IndexedDB + sync queue ──
+    try {
+      const { toast } = await import('sonner');
+      const orderId = crypto.randomUUID();
+      const orderNumber = `ORD-${Date.now().toString(36).toUpperCase()}`;
+
+      const subtotal = cartSnapshot.reduce((sum, item) => {
+        const price = item.variant ? item.variant.price : item.menuItem.price;
+        return sum + price * item.quantity;
+      }, 0);
+      const gstEnabled = settings.invoice?.gstEnabled ?? true;
+      const tax = gstEnabled ? subtotal * (settings.taxRate / 100) : 0;
+      const discountType = orderDetails.discountType || 'fixed';
+      const discountValue = orderDetails.discountValue || 0;
+      const discount = discountType === 'percentage'
+        ? (subtotal * discountValue) / 100
+        : discountValue;
+      const total = subtotal + tax - discount;
+
+      const table = data.tables.find((t) => t.id === orderDetails.tableId);
+      const waiter = data.waiters.find((w) => w.id === orderDetails.waiterId);
+
+      const orderRow = {
+        id: orderId,
+        order_number: orderNumber,
+        order_type: orderDetails.orderType,
+        status: 'pending',
+        subtotal,
+        tax,
+        discount,
+        discount_type: discountType,
+        discount_value: discountValue,
+        discount_reason: orderDetails.discountReason || null,
+        total,
+        payment_method: orderDetails.paymentMethod,
+        customer_name: orderDetails.customerName || null,
+        table_id: orderDetails.tableId || null,
+        table_number: table?.number || null,
+        waiter_id: orderDetails.waiterId || null,
+        waiter_name: waiter?.name || null,
+        created_at: new Date().toISOString(),
+        completed_at: null,
+        created_by: null,
+      };
+
+      const orderItemRows = cartSnapshot.map((item) => {
+        const price = item.variant ? item.variant.price : item.menuItem.price;
+        return {
+          id: crypto.randomUUID(),
+          order_id: orderId,
+          menu_item_id: item.menuItem.id,
+          menu_item_name: item.variant
+            ? `${item.menuItem.name} (${item.variant.name})`
+            : item.menuItem.name,
+          variant_id: item.variant?.id || null,
+          variant_name: item.variant?.name || null,
+          quantity: item.quantity,
+          unit_price: price,
+          total: price * item.quantity,
+          notes: item.notes || null,
+          created_at: new Date().toISOString(),
+        };
+      });
+
+      // Save to IndexedDB cache
+      const cachedOrders = await getCachedData('orders');
+      await cacheTableData('orders', [orderRow, ...cachedOrders]);
+
+      const cachedItems = await getCachedData('order_items');
+      await cacheTableData('order_items', [...orderItemRows, ...cachedItems]);
+
+      // Add to sync queue
+      await addToSyncQueue({
+        table: 'orders',
+        action: 'insert',
+        data: orderRow,
+        timestamp: Date.now(),
+      });
+
+      for (const item of orderItemRows) {
+        await addToSyncQueue({
+          table: 'order_items',
+          action: 'insert',
+          data: item,
+          timestamp: Date.now() + 1,
+        });
+      }
+
+      clearCart();
+      toast.success(`Order ${orderNumber} saved offline — will sync when online`);
+
+      // Build the order object to return for the completion modal
+      const order: Order = {
+        id: orderId,
+        orderNumber,
+        items: orderItemRows.map((r) => ({
+          menuItemId: r.menu_item_id,
+          menuItemName: r.menu_item_name,
+          variantId: r.variant_id || undefined,
+          variantName: r.variant_name || undefined,
+          quantity: r.quantity,
+          unitPrice: r.unit_price,
+          total: r.total,
+          notes: r.notes,
+        })),
+        subtotal,
+        tax,
+        discount,
+        discountType: discountType as any,
+        discountValue,
+        discountReason: orderDetails.discountReason || undefined,
+        total,
+        paymentMethod: orderDetails.paymentMethod,
+        status: 'pending',
+        customerName: orderDetails.customerName || null,
+        tableId: orderDetails.tableId || null,
+        tableNumber: table?.number || null,
+        waiterId: orderDetails.waiterId || null,
+        waiterName: waiter?.name || null,
+        orderType: orderDetails.orderType,
+        createdAt: new Date(),
+        completedAt: undefined,
+      };
+
+      // Update local state
+      data.refetch();
+      return order;
+    } catch (offlineError) {
+      console.error('completeOrder offline error:', offlineError);
+      const { toast } = await import('sonner');
+      toast.error('Failed to save order offline');
       return null;
     }
   }, [cart, settings, data.tables, data.waiters, data.ingredients, actions, clearCart, data.refetch, fetchOrderWithItems]);
