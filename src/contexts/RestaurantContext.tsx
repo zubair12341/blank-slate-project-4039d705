@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useMemo } from
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseData } from '@/hooks/useSupabaseData';
 import { useSupabaseActions } from '@/hooks/useSupabaseActions';
+import { addToSyncQueue, cacheTableData, getCachedData } from '@/lib/offlineDb';
 import {
   Ingredient,
   MenuItem,
