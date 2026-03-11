@@ -293,9 +293,56 @@ export default function POS() {
     setShowKitchenInvoice(true);
   };
 
+  type KitchenSlipItem = { name: string; quantity: number; notes?: string };
+
+  const resolveKitchenSection = (categoryId?: string) => {
+    const categoryName = menuCategories.find((c) => c.id === categoryId)?.name?.trim() || 'Other';
+    const normalizedCategoryName = categoryName.toLowerCase();
+
+    if (/(fast\s*food|burger|broast|shawarma|roll|sandwich|fries|pizza|pasta)/.test(normalizedCategoryName)) {
+      return { sectionKey: 'fast-food', sectionName: 'Fast Food Section' };
+    }
+
+    if (/(karahi|karhaie|karhai)/.test(normalizedCategoryName)) {
+      return { sectionKey: 'karahi', sectionName: 'Karahi Section' };
+    }
+
+    return {
+      sectionKey: categoryId || `section-${categoryName.toLowerCase().replace(/\s+/g, '-')}`,
+      sectionName: categoryName,
+    };
+  };
+
+  const getKitchenSlipGroups = () => {
+    const groupedBySection = new Map<string, { sectionName: string; items: KitchenSlipItem[] }>();
+
+    cart.forEach((item) => {
+      const { sectionKey, sectionName } = resolveKitchenSection(item.menuItem.categoryId);
+      const displayName = item.variant
+        ? `${item.menuItem.name} (${item.variant.name})`
+        : item.menuItem.name;
+
+      if (!groupedBySection.has(sectionKey)) {
+        groupedBySection.set(sectionKey, { sectionName, items: [] });
+      }
+
+      groupedBySection.get(sectionKey)!.items.push({
+        name: displayName,
+        quantity: item.quantity,
+        notes: item.notes,
+      });
+    });
+
+    return Array.from(groupedBySection.entries()).map(([sectionKey, group]) => ({
+      sectionKey,
+      sectionName: group.sectionName,
+      items: group.items,
+    }));
+  };
+
   const buildCategoryKitchenSlipHtml = (
-    categoryName: string,
-    items: { name: string; quantity: number; notes?: string }[],
+    sectionName: string,
+    items: KitchenSlipItem[],
     meta: { waiterName?: string; tableName?: string; customerName?: string; orderTypeName?: string }
   ) => {
     const itemsHtml = items.map(item => `
@@ -308,7 +355,7 @@ export default function POS() {
 
     return `<html>
       <head>
-        <title>Kitchen Order - ${categoryName}</title>
+        <title>Kitchen Order - ${sectionName}</title>
         <style>
           html, body { margin: 0 !important; padding: 0 !important; width: 72mm; }
           body { font-family: 'Courier New', monospace; width: 72mm; max-width: 72mm; font-weight: 700; color: #000; }
@@ -339,7 +386,7 @@ export default function POS() {
           <p>${settings.name}</p>
           <p>${new Date().toLocaleString('en-PK')}</p>
         </div>
-        <div class="section-name">📌 ${categoryName.toUpperCase()}</div>
+        <div class="section-name">📌 ${sectionName.toUpperCase()}</div>
         <div class="info">
           <div class="info-row"><strong>Order Type:</strong> <span>${meta.orderTypeName}</span></div>
           ${meta.tableName ? `<div class="info-row"><strong>Table:</strong> <span>${meta.tableName}</span></div>` : ''}
@@ -369,41 +416,30 @@ export default function POS() {
       customerName: customerName || '',
     };
 
-    // Group cart items by their menu category
-    const groupedByCategory = new Map<string, { categoryName: string; items: { name: string; quantity: number; notes?: string }[] }>();
+    const groupedSections = getKitchenSlipGroups();
 
-    cart.forEach((item) => {
-      const catId = item.menuItem.categoryId || 'uncategorized';
-      const catName = menuCategories.find((c) => c.id === item.menuItem.categoryId)?.name || 'Other';
-      const displayName = item.variant
-        ? `${item.menuItem.name} (${item.variant.name})`
-        : item.menuItem.name;
+    if (groupedSections.length === 0) {
+      setIsPrintingKitchen(false);
+      toast.error('No kitchen items to print');
+      return;
+    }
 
-      if (!groupedByCategory.has(catId)) {
-        groupedByCategory.set(catId, { categoryName: catName, items: [] });
-      }
-      groupedByCategory.get(catId)!.items.push({ name: displayName, quantity: item.quantity, notes: item.notes });
-    });
-
-    // Build one slip per category
-    const slips = Array.from(groupedByCategory.values()).map((group) =>
-      buildCategoryKitchenSlipHtml(group.categoryName, group.items, meta)
+    const slips = groupedSections.map((group) =>
+      buildCategoryKitchenSlipHtml(group.sectionName, group.items, meta)
     );
 
-    // Play loud kitchen notification sound
     playKitchenNotificationSound();
 
-    // Print slips one after another
     let printIndex = 0;
     const printNext = () => {
       if (printIndex >= slips.length) {
         setIsPrintingKitchen(false);
         setShowKitchenInvoice(false);
-        toast.success(`${slips.length} kitchen slip(s) printed for ${slips.length} section(s)!`);
+        toast.success(`${slips.length} kitchen slip(s) printed for ${groupedSections.length} section(s)!`);
         return;
       }
       printWithImages(slips[printIndex], () => {
-        printIndex++;
+        printIndex += 1;
         setTimeout(printNext, 500);
       });
     };
