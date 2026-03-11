@@ -83,6 +83,7 @@ export default function MainLayout() {
             <div className="flex-1">
               <h1 className="font-display font-bold lg:hidden">{settings.name}</h1>
             </div>
+            <OnlineStatusIndicator />
             <Button
               variant="ghost"
               size="icon"

@@ -19,6 +19,7 @@ import {
   RecipeIngredient,
 } from '@/types/restaurant';
 import { toast } from 'sonner';
+import { cacheTableData, getCachedData, getCachedOrderItems } from '@/lib/offlineDb';
 
 // Transform database ingredient category to app type
 const transformIngredientCategory = (row: any): IngredientCategory => ({
@@ -197,6 +198,41 @@ const transformStockSale = (row: any): StockSale => ({
   createdAt: new Date(row.created_at),
 });
 
+// ── Load cached data from IndexedDB ────────────────────────────
+
+async function loadFromCache() {
+  try {
+    const [
+      ingredients, menuCategories, menuItems, variants,
+      tables, waiters, orders, orderItems,
+      settings, purchases, transfers, removals, sales,
+    ] = await Promise.all([
+      getCachedData('ingredients'),
+      getCachedData('menu_categories'),
+      getCachedData('menu_items'),
+      getCachedData('menu_item_variants'),
+      getCachedData('restaurant_tables'),
+      getCachedData('waiters'),
+      getCachedData('orders'),
+      getCachedData('order_items'),
+      getCachedData('restaurant_settings'),
+      getCachedData('stock_purchases'),
+      getCachedData('stock_transfers'),
+      getCachedData('stock_removals'),
+      getCachedData('stock_sales'),
+    ]);
+
+    return {
+      ingredients, menuCategories, menuItems, variants,
+      tables, waiters, orders, orderItems,
+      settings: settings[0] || null,
+      purchases, transfers, removals, sales,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function useSupabaseData() {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
@@ -213,8 +249,79 @@ export function useSupabaseData() {
   const [stockRemovals, setStockRemovals] = useState<StockRemoval[]>([]);
   const [stockSales, setStockSales] = useState<StockSale[]>([]);
 
+  // Apply raw DB rows to state and cache
+  const applyData = useCallback((raw: {
+    ingredients: any[]; menuCategories: any[]; menuItems: any[]; variants: any[];
+    tables: any[]; waiters: any[]; orders: any[]; orderItems: any[];
+    settings: any; purchases: any[]; transfers: any[]; removals: any[]; sales: any[];
+  }) => {
+    if (raw.ingredients?.length) {
+      setIngredients(raw.ingredients.map(transformIngredient));
+      const uniqueCategories = [...new Set(raw.ingredients.map((i: any) => i.category))];
+      setIngredientCategories(uniqueCategories.map(cat => ({ id: cat, name: cat })));
+    }
+    if (raw.menuCategories?.length) setMenuCategories(raw.menuCategories.map(transformMenuCategory));
+    if (raw.menuItems?.length) {
+      const variantsData = raw.variants || [];
+      setMenuItems(raw.menuItems.map((item: any) => {
+        const itemVariants = variantsData.filter((v: any) => v.menu_item_id === item.id);
+        return transformMenuItem(item, itemVariants);
+      }));
+    }
+    if (raw.tables?.length) setTables(raw.tables.map(transformTable));
+    if (raw.waiters?.length) setWaiters(raw.waiters.map(transformWaiter));
+    if (raw.settings) setSettings(transformSettings(raw.settings));
+    if (raw.purchases?.length) setStockPurchases(raw.purchases.map(transformStockPurchase));
+    if (raw.transfers?.length) setStockTransfers(raw.transfers.map(transformStockTransfer));
+    if (raw.removals?.length) setStockRemovals(raw.removals.map(transformStockRemoval));
+    if (raw.sales?.length) setStockSales(raw.sales.map(transformStockSale));
+
+    // Build orders with items
+    if (raw.orders?.length) {
+      const ordersWithItems = raw.orders.map((order: any) => {
+        const items = (raw.orderItems || [])
+          .filter((item: any) => item.order_id === order.id)
+          .map(transformOrderItem);
+        return transformOrder(order, items);
+      });
+      setOrders(ordersWithItems);
+    }
+  }, []);
+
   const fetchAll = useCallback(async () => {
     if (!user) {
+      setIsLoading(false);
+      return;
+    }
+
+    // ── Step 1: Load from IndexedDB cache first (instant) ──
+    try {
+      const cached = await loadFromCache();
+      if (cached && (cached.ingredients.length > 0 || cached.menuItems.length > 0)) {
+        applyData({
+          ingredients: cached.ingredients,
+          menuCategories: cached.menuCategories,
+          menuItems: cached.menuItems,
+          variants: cached.variants,
+          tables: cached.tables,
+          waiters: cached.waiters,
+          orders: cached.orders,
+          orderItems: cached.orderItems,
+          settings: cached.settings,
+          purchases: cached.purchases,
+          transfers: cached.transfers,
+          removals: cached.removals,
+          sales: cached.sales,
+        });
+        setIsLoading(false);
+        console.log('[Offline] Loaded data from IndexedDB cache');
+      }
+    } catch (e) {
+      console.warn('[Offline] Failed to load cache:', e);
+    }
+
+    // ── Step 2: Fetch from Supabase if online ──
+    if (!navigator.onLine) {
       setIsLoading(false);
       return;
     }
@@ -222,20 +329,10 @@ export function useSupabaseData() {
     try {
       setIsLoading(true);
 
-      // Fetch all data in parallel
       const [
-        ingredientsRes,
-        categoriesRes,
-        menuItemsRes,
-        variantsRes,
-        tablesRes,
-        waitersRes,
-        ordersRes,
-        settingsRes,
-        purchasesRes,
-        transfersRes,
-        removalsRes,
-        salesRes,
+        ingredientsRes, categoriesRes, menuItemsRes, variantsRes,
+        tablesRes, waitersRes, ordersRes, settingsRes,
+        purchasesRes, transfersRes, removalsRes, salesRes,
       ] = await Promise.all([
         supabase.from('ingredients').select('*').order('name'),
         supabase.from('menu_categories').select('*').order('sort_order'),
@@ -251,98 +348,74 @@ export function useSupabaseData() {
         supabase.from('stock_sales').select('*').order('created_at', { ascending: false }),
       ]);
 
-      // Handle ingredients
-      if (ingredientsRes.data) {
-        setIngredients(ingredientsRes.data.map(transformIngredient));
-        
-        // Extract unique categories from ingredients as fallback
-        const uniqueCategories = [...new Set(ingredientsRes.data.map(i => i.category))];
-        const categoryObjects: IngredientCategory[] = uniqueCategories.map(cat => ({
-          id: cat,
-          name: cat,
-        }));
-        setIngredientCategories(categoryObjects);
-      }
-
-      // Handle menu categories
-      if (categoriesRes.data) {
-        setMenuCategories(categoriesRes.data.map(transformMenuCategory));
-      }
-
-      // Handle menu items with variants
-      if (menuItemsRes.data) {
-        const variantsData = variantsRes.data || [];
-        setMenuItems(menuItemsRes.data.map(item => {
-          const itemVariants = variantsData.filter(v => v.menu_item_id === item.id);
-          return transformMenuItem(item, itemVariants);
-        }));
-      }
-
-      // Handle tables
-      if (tablesRes.data) {
-        setTables(tablesRes.data.map(transformTable));
-      }
-
-      // Handle waiters
-      if (waitersRes.data) {
-        setWaiters(waitersRes.data.map(transformWaiter));
-      }
-
-      // Handle settings
-      if (settingsRes.data) {
-        setSettings(transformSettings(settingsRes.data));
-      }
-
-      // Handle stock purchases
-      if (purchasesRes.data) {
-        setStockPurchases(purchasesRes.data.map(transformStockPurchase));
-      }
-
-      // Handle stock transfers
-      if (transfersRes.data) {
-        setStockTransfers(transfersRes.data.map(transformStockTransfer));
-      }
-
-      // Handle stock removals
-      if (removalsRes.data) {
-        setStockRemovals(removalsRes.data.map(transformStockRemoval));
-      }
-
-      // Handle stock sales
-      if (salesRes.data) {
-        setStockSales(salesRes.data.map(transformStockSale));
-      }
-
-      // Handle orders with items
-      if (ordersRes.data) {
+      // Fetch order items
+      let orderItemsData: any[] = [];
+      if (ordersRes.data?.length) {
         const orderIds = ordersRes.data.map(o => o.id);
-        const { data: orderItems } = await supabase
+        const { data: oi } = await supabase
           .from('order_items')
           .select('*')
           .in('order_id', orderIds);
+        orderItemsData = oi || [];
+      }
 
-        const ordersWithItems = ordersRes.data.map(order => {
-          const items = (orderItems || [])
-            .filter(item => item.order_id === order.id)
-            .map(transformOrderItem);
-          return transformOrder(order, items);
-        });
-        setOrders(ordersWithItems);
+      const raw = {
+        ingredients: ingredientsRes.data || [],
+        menuCategories: categoriesRes.data || [],
+        menuItems: menuItemsRes.data || [],
+        variants: variantsRes.data || [],
+        tables: tablesRes.data || [],
+        waiters: waitersRes.data || [],
+        orders: ordersRes.data || [],
+        orderItems: orderItemsData,
+        settings: settingsRes.data || null,
+        purchases: purchasesRes.data || [],
+        transfers: transfersRes.data || [],
+        removals: removalsRes.data || [],
+        sales: salesRes.data || [],
+      };
+
+      applyData(raw);
+
+      // ── Step 3: Cache everything in IndexedDB ──
+      try {
+        await Promise.all([
+          cacheTableData('ingredients', raw.ingredients),
+          cacheTableData('menu_categories', raw.menuCategories),
+          cacheTableData('menu_items', raw.menuItems),
+          cacheTableData('menu_item_variants', raw.variants),
+          cacheTableData('restaurant_tables', raw.tables),
+          cacheTableData('waiters', raw.waiters),
+          cacheTableData('orders', raw.orders),
+          cacheTableData('order_items', raw.orderItems),
+          cacheTableData('restaurant_settings', raw.settings ? [raw.settings] : []),
+          cacheTableData('stock_purchases', raw.purchases),
+          cacheTableData('stock_transfers', raw.transfers),
+          cacheTableData('stock_removals', raw.removals),
+          cacheTableData('stock_sales', raw.sales),
+        ]);
+        console.log('[Offline] Cached all data to IndexedDB');
+      } catch (cacheErr) {
+        console.warn('[Offline] Failed to cache data:', cacheErr);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
-      toast.error('Failed to load data');
+      if (!navigator.onLine) {
+        toast.info('Working offline with cached data');
+      } else {
+        toast.error('Failed to load data');
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [user, applyData]);
 
   // Initial fetch
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
 
-  // Set up realtime subscriptions
+  // Set up realtime subscriptions (only when online)
   useEffect(() => {
     if (!user) return;
 
@@ -351,9 +424,7 @@ export function useSupabaseData() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'orders' },
-        () => {
-          fetchAll();
-        }
+        () => { fetchAll(); }
       )
       .subscribe();
 
@@ -362,9 +433,7 @@ export function useSupabaseData() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'ingredients' },
-        () => {
-          fetchAll();
-        }
+        () => { fetchAll(); }
       )
       .subscribe();
 
@@ -373,6 +442,17 @@ export function useSupabaseData() {
       supabase.removeChannel(ingredientsChannel);
     };
   }, [user, fetchAll]);
+
+  // Re-fetch when coming back online
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log('[Offline] Back online, refreshing data...');
+      toast.success('Back online! Syncing data...');
+      fetchAll();
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [fetchAll]);
 
   return {
     isLoading,
