@@ -9,6 +9,7 @@ import { AppSidebar } from '@/components/AppSidebar';
 import { Button } from '@/components/ui/button';
 import { CalculatorModal } from '@/components/CalculatorModal';
 import { useOrderNotifications } from '@/hooks/useOrderNotifications';
+import { OnlineStatusIndicator } from '@/components/OnlineStatusIndicator';
 
 
 export default function MainLayout() {
@@ -82,6 +83,7 @@ export default function MainLayout() {
             <div className="flex-1">
               <h1 className="font-display font-bold lg:hidden">{settings.name}</h1>
             </div>
+            <OnlineStatusIndicator />
             <Button
               variant="ghost"
               size="icon"
