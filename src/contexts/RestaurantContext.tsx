@@ -921,6 +921,13 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       );
       await cacheTableData('orders', updatedOrders);
 
+      // Directly update React orders state
+      data.setOrders((prev: Order[]) =>
+        prev.map((o) =>
+          o.id === orderId ? { ...o, status: 'cancelled' as const } : o
+        )
+      );
+
       await addToSyncQueue({
         table: 'orders',
         action: 'update',
@@ -938,6 +945,15 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         );
         await cacheTableData('restaurant_tables', updatedTables);
 
+        // Directly update React tables state
+        data.setTables((prev: Table[]) =>
+          prev.map((t) =>
+            t.id === tableId
+              ? { ...t, status: 'available' as const, currentOrderId: undefined }
+              : t
+          )
+        );
+
         await addToSyncQueue({
           table: 'restaurant_tables',
           action: 'update',
@@ -947,7 +963,6 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       }
 
       toast.success('Order cancelled offline — will sync when online');
-      await data.refetch();
     } catch (offlineError) {
       console.error('cancelOrder offline error:', offlineError);
       const { toast } = await import('sonner');
