@@ -273,12 +273,12 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       const cachedItems = await getCachedData('order_items');
       const itemRows = cachedItems.filter((i: any) => i.order_id === orderId);
 
-      const items = itemRows.map((row: any) => ({
+      const items = dedupeLatestOrderItemRows(itemRows).map((row: any) => ({
         menuItemId: row.menu_item_id,
         menuItemName: row.menu_item_name,
         variantId: row.variant_id || undefined,
         variantName: row.variant_name || undefined,
-        quantity: row.quantity,
+        quantity: Number(row.quantity),
         unitPrice: Number(row.unit_price),
         total: Number(row.total),
         notes: row.notes ?? undefined,
