@@ -925,8 +925,37 @@ export function useSupabaseActions() {
       throw orderError;
     }
 
-    // Delete old items and insert new ones
-    await supabase.from('order_items').delete().eq('order_id', orderId);
+    // Delete old items – check for errors and verify deletion
+    const { error: deleteError } = await supabase
+      .from('order_items')
+      .delete()
+      .eq('order_id', orderId);
+
+    if (deleteError) {
+      console.error('Failed to delete old order items:', deleteError);
+      // Try deleting by fetching IDs first
+      const { data: existingItems } = await supabase
+        .from('order_items')
+        .select('id')
+        .eq('order_id', orderId);
+      if (existingItems && existingItems.length > 0) {
+        for (const item of existingItems) {
+          await supabase.from('order_items').delete().eq('id', item.id);
+        }
+      }
+    }
+
+    // Verify old items are actually gone before inserting new ones
+    const { data: remainingItems } = await supabase
+      .from('order_items')
+      .select('id')
+      .eq('order_id', orderId);
+
+    if (remainingItems && remainingItems.length > 0) {
+      console.warn('Order items still exist after delete, removing individually...');
+      const ids = remainingItems.map((r: any) => r.id);
+      await supabase.from('order_items').delete().in('id', ids);
+    }
 
     const orderItems = cart.map((item) => ({
       order_id: orderId,
@@ -942,7 +971,12 @@ export function useSupabaseActions() {
       notes: item.notes,
     }));
 
-    await supabase.from('order_items').insert(orderItems);
+    const { error: insertError } = await supabase.from('order_items').insert(orderItems);
+    if (insertError) {
+      console.error('Failed to insert new order items:', insertError);
+      toast.error('Failed to update order items');
+      throw insertError;
+    }
 
     toast.success('Order updated');
     return order;
