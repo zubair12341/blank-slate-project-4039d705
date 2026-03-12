@@ -37,6 +37,7 @@ const expenseCategories = [
 export default function DailyCosts() {
   const { user, userRole } = useAuth();
   const { settings, getTodaysSales } = useRestaurant();
+  const { isOnline } = useOnlineStatus();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
@@ -60,17 +61,41 @@ export default function DailyCosts() {
   const fetchExpenses = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('expenses')
-        .select('*')
-        .eq('expense_date', selectedDate)
-        .order('created_at', { ascending: false });
+      if (isOnline) {
+        const { data, error } = await supabase
+          .from('expenses')
+          .select('*')
+          .eq('expense_date', selectedDate)
+          .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setExpenses(data || []);
+        if (error) throw error;
+        setExpenses(data || []);
+        // Cache all fetched expenses for offline use
+        try {
+          const allRes = await supabase.from('expenses').select('*');
+          if (allRes.data) await cacheTableData('expenses', allRes.data);
+        } catch { /* caching is best-effort */ }
+      } else {
+        // Offline: load from IndexedDB and filter by date
+        const cached = await getCachedData('expenses');
+        const filtered = cached
+          .filter((e: any) => e.expense_date === selectedDate)
+          .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setExpenses(filtered);
+      }
     } catch (error) {
       console.error('Error fetching expenses:', error);
-      toast.error('Failed to load expenses');
+      // Fallback to offline cache on any error
+      try {
+        const cached = await getCachedData('expenses');
+        const filtered = cached
+          .filter((e: any) => e.expense_date === selectedDate)
+          .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setExpenses(filtered);
+        toast.info('Loaded expenses from offline cache');
+      } catch {
+        toast.error('Failed to load expenses');
+      }
     } finally {
       setIsLoading(false);
     }
