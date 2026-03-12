@@ -1369,6 +1369,7 @@ export default function POS() {
           </div>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }
