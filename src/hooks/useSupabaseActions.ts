@@ -734,6 +734,120 @@ export function useSupabaseActions() {
   };
 
   // Order actions
+  const getOrderItemKey = (menuItemId: string, variantId?: string | null) =>
+    `${menuItemId}::${variantId || 'base'}`;
+
+  const toOrderItemRow = (orderId: string, item: CartItem) => {
+    const unitPrice = getPriceForCartItem(item);
+    return {
+      order_id: orderId,
+      menu_item_id: item.menuItem.id,
+      menu_item_name: item.variant
+        ? `${item.menuItem.name} (${item.variant.name})`
+        : item.menuItem.name,
+      variant_id: item.variant?.id || null,
+      variant_name: item.variant?.name || null,
+      quantity: item.quantity,
+      unit_price: unitPrice,
+      total: unitPrice * item.quantity,
+      notes: item.notes || null,
+    };
+  };
+
+  const syncOrderItemsForUpdate = async (orderId: string, cart: CartItem[]) => {
+    const desiredRows = cart.map((item) => toOrderItemRow(orderId, item));
+    const desiredByKey = new Map(
+      desiredRows.map((row) => [getOrderItemKey(row.menu_item_id, row.variant_id), row])
+    );
+
+    const { data: existingRows, error: existingError } = await supabase
+      .from('order_items')
+      .select('id, menu_item_id, variant_id, created_at')
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: false });
+
+    if (existingError) throw existingError;
+
+    const existingByKey = new Map<string, any[]>();
+    (existingRows || []).forEach((row: any) => {
+      const key = getOrderItemKey(row.menu_item_id, row.variant_id);
+      const existing = existingByKey.get(key) || [];
+      existing.push(row);
+      existingByKey.set(key, existing);
+    });
+
+    const updates: any[] = [];
+    const inserts: any[] = [];
+
+    for (const [key, desired] of desiredByKey.entries()) {
+      const matches = existingByKey.get(key) || [];
+
+      if (matches.length === 0) {
+        inserts.push(desired);
+        continue;
+      }
+
+      const [primary, ...duplicates] = matches;
+
+      updates.push(
+        supabase
+          .from('order_items')
+          .update({
+            menu_item_name: desired.menu_item_name,
+            variant_id: desired.variant_id,
+            variant_name: desired.variant_name,
+            quantity: desired.quantity,
+            unit_price: desired.unit_price,
+            total: desired.total,
+            notes: desired.notes,
+          })
+          .eq('id', primary.id)
+      );
+
+      for (const duplicate of duplicates) {
+        updates.push(
+          supabase
+            .from('order_items')
+            .update({
+              quantity: 0,
+              total: 0,
+              notes: null,
+            })
+            .eq('id', duplicate.id)
+        );
+      }
+
+      existingByKey.delete(key);
+    }
+
+    // Any remaining rows are items removed from cart.
+    for (const staleRows of existingByKey.values()) {
+      for (const stale of staleRows) {
+        updates.push(
+          supabase
+            .from('order_items')
+            .update({
+              quantity: 0,
+              total: 0,
+              notes: null,
+            })
+            .eq('id', stale.id)
+        );
+      }
+    }
+
+    if (updates.length > 0) {
+      const results = await Promise.all(updates);
+      const failed = results.find((result: any) => result.error);
+      if (failed?.error) throw failed.error;
+    }
+
+    if (inserts.length > 0) {
+      const { error: insertError } = await supabase.from('order_items').insert(inserts);
+      if (insertError) throw insertError;
+    }
+  };
+
   const createOrder = async (
     cart: CartItem[],
     orderDetails: {
@@ -801,19 +915,7 @@ export function useSupabaseActions() {
     }
 
     // Create order items with variant info
-    const orderItems = cart.map((item) => ({
-      order_id: order.id,
-      menu_item_id: item.menuItem.id,
-      menu_item_name: item.variant 
-        ? `${item.menuItem.name} (${item.variant.name})`
-        : item.menuItem.name,
-      variant_id: item.variant?.id || null,
-      variant_name: item.variant?.name || null,
-      quantity: item.quantity,
-      unit_price: getPriceForCartItem(item),
-      total: getPriceForCartItem(item) * item.quantity,
-      notes: item.notes,
-    }));
+    const orderItems = cart.map((item) => toOrderItemRow(order.id, item));
 
     const { error: itemsError } = await supabase
       .from('order_items')
@@ -925,57 +1027,12 @@ export function useSupabaseActions() {
       throw orderError;
     }
 
-    // Delete old items – check for errors and verify deletion
-    const { error: deleteError } = await supabase
-      .from('order_items')
-      .delete()
-      .eq('order_id', orderId);
-
-    if (deleteError) {
-      console.error('Failed to delete old order items:', deleteError);
-      // Try deleting by fetching IDs first
-      const { data: existingItems } = await supabase
-        .from('order_items')
-        .select('id')
-        .eq('order_id', orderId);
-      if (existingItems && existingItems.length > 0) {
-        for (const item of existingItems) {
-          await supabase.from('order_items').delete().eq('id', item.id);
-        }
-      }
-    }
-
-    // Verify old items are actually gone before inserting new ones
-    const { data: remainingItems } = await supabase
-      .from('order_items')
-      .select('id')
-      .eq('order_id', orderId);
-
-    if (remainingItems && remainingItems.length > 0) {
-      console.warn('Order items still exist after delete, removing individually...');
-      const ids = remainingItems.map((r: any) => r.id);
-      await supabase.from('order_items').delete().in('id', ids);
-    }
-
-    const orderItems = cart.map((item) => ({
-      order_id: orderId,
-      menu_item_id: item.menuItem.id,
-      menu_item_name: item.variant
-        ? `${item.menuItem.name} (${item.variant.name})`
-        : item.menuItem.name,
-      variant_id: item.variant?.id || null,
-      variant_name: item.variant?.name || null,
-      quantity: item.quantity,
-      unit_price: getPriceForCartItem(item),
-      total: getPriceForCartItem(item) * item.quantity,
-      notes: item.notes,
-    }));
-
-    const { error: insertError } = await supabase.from('order_items').insert(orderItems);
-    if (insertError) {
-      console.error('Failed to insert new order items:', insertError);
+    try {
+      await syncOrderItemsForUpdate(orderId, cart);
+    } catch (orderItemsError) {
+      console.error('Failed to sync order items during update:', orderItemsError);
       toast.error('Failed to update order items');
-      throw insertError;
+      throw orderItemsError;
     }
 
     toast.success('Order updated');

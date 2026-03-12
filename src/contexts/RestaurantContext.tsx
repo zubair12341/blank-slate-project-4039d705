@@ -178,6 +178,26 @@ const UUID_RE =
 
 const isUuid = (value?: string | null) => !!value && UUID_RE.test(value);
 
+const getOrderItemKey = (menuItemId: string, variantId?: string | null) =>
+  `${menuItemId}::${variantId || 'base'}`;
+
+const dedupeLatestOrderItemRows = (rows: any[]) => {
+  const sortedRows = [...rows].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  const unique = new Map<string, any>();
+  for (const row of sortedRows) {
+    if (Number(row.quantity) <= 0) continue;
+    const key = getOrderItemKey(row.menu_item_id, row.variant_id);
+    if (!unique.has(key)) {
+      unique.set(key, row);
+    }
+  }
+
+  return Array.from(unique.values());
+};
+
 export function RestaurantProvider({ children }: { children: React.ReactNode }) {
   const data = useSupabaseData();
   const actions = useSupabaseActions();
@@ -193,7 +213,11 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     if (navigator.onLine) {
       const [{ data: orderRow, error: orderErr }, { data: itemRows, error: itemsErr }] = await Promise.all([
         supabase.from('orders').select('*').eq('id', orderId).single(),
-        supabase.from('order_items').select('*').eq('order_id', orderId),
+        supabase
+          .from('order_items')
+          .select('*')
+          .eq('order_id', orderId)
+          .order('created_at', { ascending: false }),
       ]);
 
       if (orderErr) {
@@ -202,12 +226,12 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       } else {
         if (itemsErr) console.error('fetchOrderWithItems items error:', itemsErr);
 
-        const items = (itemRows || []).map((row: any) => ({
+        const items = dedupeLatestOrderItemRows(itemRows || []).map((row: any) => ({
           menuItemId: row.menu_item_id,
           menuItemName: row.menu_item_name,
           variantId: row.variant_id || undefined,
           variantName: row.variant_name || undefined,
-          quantity: row.quantity,
+          quantity: Number(row.quantity),
           unitPrice: Number(row.unit_price),
           total: Number(row.total),
           notes: row.notes ?? undefined,
@@ -249,12 +273,12 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       const cachedItems = await getCachedData('order_items');
       const itemRows = cachedItems.filter((i: any) => i.order_id === orderId);
 
-      const items = itemRows.map((row: any) => ({
+      const items = dedupeLatestOrderItemRows(itemRows).map((row: any) => ({
         menuItemId: row.menu_item_id,
         menuItemName: row.menu_item_name,
         variantId: row.variant_id || undefined,
         variantName: row.variant_name || undefined,
-        quantity: row.quantity,
+        quantity: Number(row.quantity),
         unitPrice: Number(row.unit_price),
         total: Number(row.total),
         notes: row.notes ?? undefined,
@@ -358,7 +382,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     const order = data.orders.find((o) => o.id === orderId);
     if (!order) return null;
     
-    // Build cart items, deduplicating by cart key to prevent doubled entries
+    // Build cart items, keeping only the latest item per menu item + variant key
     const cartMap = new Map<string, CartItem>();
     order.items.forEach((item) => {
       const menuItem = data.menuItems.find((m) => m.id === item.menuItemId);
@@ -368,13 +392,9 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         if (item.variantId && menuItem.variants) {
           variant = menuItem.variants.find((v) => v.id === item.variantId);
         }
-        
-        const cartKey = variant ? `${menuItem.id}:${variant.id}` : menuItem.id;
-        const existing = cartMap.get(cartKey);
-        if (existing) {
-          // Merge duplicate: sum quantities
-          existing.quantity += item.quantity;
-        } else {
+
+        const cartKey = getCartKey(menuItem.id, variant?.id);
+        if (!cartMap.has(cartKey)) {
           cartMap.set(cartKey, {
             menuItem,
             variant,
@@ -389,7 +409,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     setCurrentEditingOrderId(orderId);
     
     return { order, waiterId: order.waiterId };
-  }, [data.orders, data.menuItems]);
+  }, [data.orders, data.menuItems, getCartKey]);
   
   const getOrderById = useCallback((orderId: string) => {
     return data.orders.find((o) => o.id === orderId);
