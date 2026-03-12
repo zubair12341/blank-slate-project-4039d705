@@ -682,6 +682,12 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         if (result) {
           clearCart();
           const order = await fetchOrderWithItems(result.id);
+          // Optimistically update state
+          if (order) {
+            data.setOrders((prev: Order[]) =>
+              prev.map((o) => (o.id === order.id ? order : o))
+            );
+          }
           data.refetch();
           return order;
         }
