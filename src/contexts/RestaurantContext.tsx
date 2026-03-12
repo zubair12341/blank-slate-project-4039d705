@@ -393,7 +393,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           variant = menuItem.variants.find((v) => v.id === item.variantId);
         }
 
-        const cartKey = getCartKey(menuItem.id, variant?.id || item.variantId);
+        const cartKey = getCartKey(menuItem.id, variant?.id);
         if (!cartMap.has(cartKey)) {
           cartMap.set(cartKey, {
             menuItem,
