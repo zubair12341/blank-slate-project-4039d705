@@ -78,6 +78,7 @@ export default function POS() {
   } = useRestaurant();
 
   const isMobile = useIsMobile();
+  const { isOnline, pendingSyncCount } = useOnlineStatus();
   const [showMobileCart, setShowMobileCart] = useState(false);
 
   const [orderType, setOrderType] = useState<OrderTypeSelection>(null);
