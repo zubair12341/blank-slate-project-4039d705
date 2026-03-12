@@ -23,12 +23,13 @@ interface OfflineDBSchema extends DBSchema {
   stock_transfers: { key: string; value: any };
   stock_removals: { key: string; value: any };
   stock_sales: { key: string; value: any };
+  expenses: { key: string; value: any };
   sync_queue: { key: string; value: SyncQueueItem; indexes: { 'by-timestamp': number } };
   meta: { key: string; value: { key: string; value: any } };
 }
 
 const DB_NAME = 'arabic-shinwari-pos';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbInstance: IDBPDatabase<OfflineDBSchema> | null = null;
 
@@ -42,6 +43,7 @@ export async function getDb(): Promise<IDBPDatabase<OfflineDBSchema>> {
         'ingredients', 'menu_categories', 'menu_items', 'menu_item_variants',
         'restaurant_tables', 'waiters', 'orders', 'restaurant_settings',
         'stock_purchases', 'stock_transfers', 'stock_removals', 'stock_sales',
+        'expenses',
       ] as const;
 
       for (const store of stores) {
@@ -76,7 +78,7 @@ export async function getDb(): Promise<IDBPDatabase<OfflineDBSchema>> {
 
 type DataStoreNames = 'ingredients' | 'menu_categories' | 'menu_items' | 'menu_item_variants' |
   'restaurant_tables' | 'waiters' | 'orders' | 'order_items' | 'restaurant_settings' |
-  'stock_purchases' | 'stock_transfers' | 'stock_removals' | 'stock_sales';
+  'stock_purchases' | 'stock_transfers' | 'stock_removals' | 'stock_sales' | 'expenses';
 
 export async function cacheTableData(storeName: DataStoreNames, rows: any[]) {
   const db = await getDb();

@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { cacheTableData, getCachedData, addToSyncQueue } from '@/lib/offlineDb';
 
 interface Expense {
   id: string;
@@ -35,6 +37,7 @@ const expenseCategories = [
 export default function DailyCosts() {
   const { user, userRole } = useAuth();
   const { settings, getTodaysSales } = useRestaurant();
+  const { isOnline } = useOnlineStatus();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
@@ -58,17 +61,41 @@ export default function DailyCosts() {
   const fetchExpenses = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('expenses')
-        .select('*')
-        .eq('expense_date', selectedDate)
-        .order('created_at', { ascending: false });
+      if (isOnline) {
+        const { data, error } = await supabase
+          .from('expenses')
+          .select('*')
+          .eq('expense_date', selectedDate)
+          .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setExpenses(data || []);
+        if (error) throw error;
+        setExpenses(data || []);
+        // Cache all fetched expenses for offline use
+        try {
+          const allRes = await supabase.from('expenses').select('*');
+          if (allRes.data) await cacheTableData('expenses', allRes.data);
+        } catch { /* caching is best-effort */ }
+      } else {
+        // Offline: load from IndexedDB and filter by date
+        const cached = await getCachedData('expenses');
+        const filtered = cached
+          .filter((e: any) => e.expense_date === selectedDate)
+          .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setExpenses(filtered);
+      }
     } catch (error) {
       console.error('Error fetching expenses:', error);
-      toast.error('Failed to load expenses');
+      // Fallback to offline cache on any error
+      try {
+        const cached = await getCachedData('expenses');
+        const filtered = cached
+          .filter((e: any) => e.expense_date === selectedDate)
+          .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setExpenses(filtered);
+        toast.info('Loaded expenses from offline cache');
+      } catch {
+        toast.error('Failed to load expenses');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -103,38 +130,66 @@ export default function DailyCosts() {
     }
 
     try {
-      if (editingExpense) {
-        // Update existing expense
-        const { error } = await supabase
-          .from('expenses')
-          .update({
+      if (isOnline) {
+        if (editingExpense) {
+          const { error } = await supabase
+            .from('expenses')
+            .update({
+              category: form.category,
+              description: form.description || null,
+              amount,
+              expense_date: form.expense_date,
+            })
+            .eq('id', editingExpense.id);
+          if (error) throw error;
+          toast.success('Expense updated successfully');
+        } else {
+          const { error } = await supabase.from('expenses').insert({
             category: form.category,
             description: form.description || null,
             amount,
             expense_date: form.expense_date,
-          })
-          .eq('id', editingExpense.id);
-
-        if (error) throw error;
-        toast.success('Expense updated successfully');
+            created_by: user?.id,
+          });
+          if (error) throw error;
+          toast.success('Expense added successfully');
+        }
       } else {
-        // Add new expense
-        const { error } = await supabase.from('expenses').insert({
-          category: form.category,
-          description: form.description || null,
-          amount,
-          expense_date: form.expense_date,
-          created_by: user?.id,
-        });
-
-        if (error) throw error;
-        toast.success('Expense added successfully');
+        // Offline mode
+        if (editingExpense) {
+          const updatedExpense = {
+            ...editingExpense,
+            category: form.category,
+            description: form.description || null,
+            amount,
+            expense_date: form.expense_date,
+          };
+          // Update local state immediately
+          setExpenses(prev => prev.map(e => e.id === editingExpense.id ? updatedExpense : e));
+          await addToSyncQueue({ table: 'expenses', action: 'update', data: { id: editingExpense.id, category: form.category, description: form.description || null, amount, expense_date: form.expense_date }, timestamp: Date.now() });
+          toast.success('Expense updated (will sync when online)');
+        } else {
+          const newExpense: Expense = {
+            id: crypto.randomUUID(),
+            category: form.category,
+            description: form.description || null,
+            amount,
+            expense_date: form.expense_date,
+            created_at: new Date().toISOString(),
+          };
+          setExpenses(prev => [newExpense, ...prev]);
+          // Cache to IndexedDB
+          const cached = await getCachedData('expenses');
+          await cacheTableData('expenses', [...cached, { ...newExpense, created_by: user?.id }]);
+          await addToSyncQueue({ table: 'expenses', action: 'insert', data: { ...newExpense, created_by: user?.id }, timestamp: Date.now() });
+          toast.success('Expense added (will sync when online)');
+        }
       }
 
       setShowDialog(false);
       setEditingExpense(null);
       setForm({ category: '', description: '', amount: '', expense_date: format(new Date(), 'yyyy-MM-dd') });
-      fetchExpenses();
+      if (isOnline) fetchExpenses();
     } catch (error) {
       console.error('Error saving expense:', error);
       toast.error('Failed to save expense');
@@ -148,10 +203,18 @@ export default function DailyCosts() {
     }
 
     try {
-      const { error } = await supabase.from('expenses').delete().eq('id', id);
-      if (error) throw error;
-      toast.success('Expense deleted');
-      fetchExpenses();
+      if (isOnline) {
+        const { error } = await supabase.from('expenses').delete().eq('id', id);
+        if (error) throw error;
+        toast.success('Expense deleted');
+        fetchExpenses();
+      } else {
+        setExpenses(prev => prev.filter(e => e.id !== id));
+        const cached = await getCachedData('expenses');
+        await cacheTableData('expenses', cached.filter((e: any) => e.id !== id));
+        await addToSyncQueue({ table: 'expenses', action: 'delete', data: { id }, timestamp: Date.now() });
+        toast.success('Expense deleted (will sync when online)');
+      }
     } catch (error) {
       console.error('Error deleting expense:', error);
       toast.error('Failed to delete expense');
