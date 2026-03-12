@@ -777,9 +777,40 @@ export default function POS() {
     </>
   );
 
+  const { isOnline, pendingSyncCount } = useOnlineStatus();
+
   // Main POS Screen
   return (
-    <div className="flex h-[calc(100vh-7rem)] gap-4 lg:gap-6 animate-fade-in relative">
+    <div className="flex flex-col h-[calc(100vh-7rem)] animate-fade-in relative">
+      {/* Offline Banner */}
+      {(!isOnline || pendingSyncCount > 0) && (
+        <div className={`flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium shrink-0 ${
+          !isOnline
+            ? 'bg-red-500/10 text-red-700 border-b border-red-500/20'
+            : 'bg-amber-500/10 text-amber-700 border-b border-amber-500/20'
+        }`}>
+          {!isOnline ? (
+            <>
+              <WifiOff className="h-4 w-4" />
+              <span>Offline Mode — Orders are saved locally</span>
+            </>
+          ) : (
+            <>
+              <CloudUpload className="h-4 w-4" />
+              <span>Syncing...</span>
+            </>
+          )}
+          {pendingSyncCount > 0 && (
+            <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-bold ${
+              !isOnline ? 'bg-red-500/20' : 'bg-amber-500/20'
+            }`}>
+              {pendingSyncCount} pending
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-1 gap-4 lg:gap-6 overflow-hidden">
       {/* Left Panel - Menu */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header with Back Button */}
