@@ -587,23 +587,29 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
 
       // Occupy table locally if dine-in
       if (orderDetails.orderType === 'dine-in' && orderDetails.tableId) {
-        const cachedTables = await getCachedData('restaurant_tables');
-        const updatedTables = cachedTables.map((t: any) =>
-          t.id === orderDetails.tableId
-            ? { ...t, status: 'occupied', current_order_id: orderId }
-            : t
+        // Update React state directly (always reliable, doesn't depend on cache)
+        data.setTables((prev: Table[]) =>
+          prev.map((t) =>
+            t.id === orderDetails.tableId
+              ? { ...t, status: 'occupied' as const, currentOrderId: orderId }
+              : t
+          )
         );
-        await cacheTableData('restaurant_tables', updatedTables);
 
-        // Directly update React state so UI reflects immediately
-        data.setTables(updatedTables.map((row: any) => ({
-          id: row.id,
-          number: row.table_number,
-          capacity: row.capacity,
-          floor: row.floor as TableFloor,
-          status: row.status as 'available' | 'occupied',
-          currentOrderId: row.current_order_id,
-        })));
+        // Also update IndexedDB cache for persistence
+        try {
+          const cachedTables = await getCachedData('restaurant_tables');
+          if (cachedTables.length > 0) {
+            const updatedTables = cachedTables.map((t: any) =>
+              t.id === orderDetails.tableId
+                ? { ...t, status: 'occupied', current_order_id: orderId }
+                : t
+            );
+            await cacheTableData('restaurant_tables', updatedTables);
+          }
+        } catch (cacheErr) {
+          console.error('Failed to update table cache:', cacheErr);
+        }
 
         await addToSyncQueue({
           table: 'restaurant_tables',
