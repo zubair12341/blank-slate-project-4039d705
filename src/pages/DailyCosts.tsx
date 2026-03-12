@@ -33,7 +33,7 @@ const expenseCategories = [
 ];
 
 export default function DailyCosts() {
-  const { user, hasPermission } = useAuth();
+  const { user, userRole } = useAuth();
   const { settings, getTodaysSales } = useRestaurant();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -142,7 +142,7 @@ export default function DailyCosts() {
   };
 
   const handleDeleteExpense = async (id: string) => {
-    if (!hasPermission('admin')) {
+    if (userRole !== 'admin' && userRole !== 'manager') {
       toast.error('Only admins can delete expenses');
       return;
     }
@@ -293,7 +293,7 @@ export default function DailyCosts() {
                       </td>
                       <td className="text-right">
                         <div className="flex justify-end gap-1">
-                          {(hasPermission('admin') || hasPermission('manager')) && (
+                          {(userRole === 'admin' || userRole === 'manager') && (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -302,7 +302,7 @@ export default function DailyCosts() {
                               <Edit2 className="h-4 w-4" />
                             </Button>
                           )}
-                          {hasPermission('admin') && (
+                          {(userRole === 'admin' || userRole === 'manager') && (
                             <Button
                               variant="ghost"
                               size="icon"
