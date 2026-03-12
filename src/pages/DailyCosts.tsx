@@ -130,38 +130,66 @@ export default function DailyCosts() {
     }
 
     try {
-      if (editingExpense) {
-        // Update existing expense
-        const { error } = await supabase
-          .from('expenses')
-          .update({
+      if (isOnline) {
+        if (editingExpense) {
+          const { error } = await supabase
+            .from('expenses')
+            .update({
+              category: form.category,
+              description: form.description || null,
+              amount,
+              expense_date: form.expense_date,
+            })
+            .eq('id', editingExpense.id);
+          if (error) throw error;
+          toast.success('Expense updated successfully');
+        } else {
+          const { error } = await supabase.from('expenses').insert({
             category: form.category,
             description: form.description || null,
             amount,
             expense_date: form.expense_date,
-          })
-          .eq('id', editingExpense.id);
-
-        if (error) throw error;
-        toast.success('Expense updated successfully');
+            created_by: user?.id,
+          });
+          if (error) throw error;
+          toast.success('Expense added successfully');
+        }
       } else {
-        // Add new expense
-        const { error } = await supabase.from('expenses').insert({
-          category: form.category,
-          description: form.description || null,
-          amount,
-          expense_date: form.expense_date,
-          created_by: user?.id,
-        });
-
-        if (error) throw error;
-        toast.success('Expense added successfully');
+        // Offline mode
+        if (editingExpense) {
+          const updatedExpense = {
+            ...editingExpense,
+            category: form.category,
+            description: form.description || null,
+            amount,
+            expense_date: form.expense_date,
+          };
+          // Update local state immediately
+          setExpenses(prev => prev.map(e => e.id === editingExpense.id ? updatedExpense : e));
+          await addToSyncQueue({ table: 'expenses', action: 'update', data: { id: editingExpense.id, category: form.category, description: form.description || null, amount, expense_date: form.expense_date }, timestamp: Date.now() });
+          toast.success('Expense updated (will sync when online)');
+        } else {
+          const newExpense: Expense = {
+            id: crypto.randomUUID(),
+            category: form.category,
+            description: form.description || null,
+            amount,
+            expense_date: form.expense_date,
+            created_at: new Date().toISOString(),
+          };
+          setExpenses(prev => [newExpense, ...prev]);
+          // Cache to IndexedDB
+          const cached = await getCachedData('expenses');
+          await cacheTableData('expenses', [...cached, { ...newExpense, created_by: user?.id }]);
+          await addToSyncQueue({ table: 'expenses', action: 'insert', data: { ...newExpense, created_by: user?.id }, timestamp: Date.now() });
+          toast.success('Expense added (will sync when online)');
+        }
       }
 
       setShowDialog(false);
       setEditingExpense(null);
       setForm({ category: '', description: '', amount: '', expense_date: format(new Date(), 'yyyy-MM-dd') });
-      fetchExpenses();
+      if (isOnline) fetchExpenses();
     } catch (error) {
       console.error('Error saving expense:', error);
       toast.error('Failed to save expense');
@@ -175,10 +203,18 @@ export default function DailyCosts() {
     }
 
     try {
-      const { error } = await supabase.from('expenses').delete().eq('id', id);
-      if (error) throw error;
-      toast.success('Expense deleted');
-      fetchExpenses();
+      if (isOnline) {
+        const { error } = await supabase.from('expenses').delete().eq('id', id);
+        if (error) throw error;
+        toast.success('Expense deleted');
+        fetchExpenses();
+      } else {
+        setExpenses(prev => prev.filter(e => e.id !== id));
+        const cached = await getCachedData('expenses');
+        await cacheTableData('expenses', cached.filter((e: any) => e.id !== id));
+        await addToSyncQueue({ table: 'expenses', action: 'delete', data: { id }, timestamp: Date.now() });
+        toast.success('Expense deleted (will sync when online)');
+      }
     } catch (error) {
       console.error('Error deleting expense:', error);
       toast.error('Failed to delete expense');
