@@ -382,7 +382,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     const order = data.orders.find((o) => o.id === orderId);
     if (!order) return null;
     
-    // Build cart items, deduplicating by cart key to prevent doubled entries
+    // Build cart items, keeping only the latest item per menu item + variant key
     const cartMap = new Map<string, CartItem>();
     order.items.forEach((item) => {
       const menuItem = data.menuItems.find((m) => m.id === item.menuItemId);
@@ -392,13 +392,9 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         if (item.variantId && menuItem.variants) {
           variant = menuItem.variants.find((v) => v.id === item.variantId);
         }
-        
-        const cartKey = variant ? `${menuItem.id}:${variant.id}` : menuItem.id;
-        const existing = cartMap.get(cartKey);
-        if (existing) {
-          // Merge duplicate: sum quantities
-          existing.quantity += item.quantity;
-        } else {
+
+        const cartKey = getCartKey(menuItem.id, variant?.id || item.variantId);
+        if (!cartMap.has(cartKey)) {
           cartMap.set(cartKey, {
             menuItem,
             variant,
