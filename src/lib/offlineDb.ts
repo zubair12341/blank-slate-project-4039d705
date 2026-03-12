@@ -29,7 +29,7 @@ interface OfflineDBSchema extends DBSchema {
 }
 
 const DB_NAME = 'arabic-shinwari-pos';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbInstance: IDBPDatabase<OfflineDBSchema> | null = null;
 
