@@ -23,6 +23,7 @@ interface OfflineDBSchema extends DBSchema {
   stock_transfers: { key: string; value: any };
   stock_removals: { key: string; value: any };
   stock_sales: { key: string; value: any };
+  expenses: { key: string; value: any };
   sync_queue: { key: string; value: SyncQueueItem; indexes: { 'by-timestamp': number } };
   meta: { key: string; value: { key: string; value: any } };
 }
