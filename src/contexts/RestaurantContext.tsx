@@ -409,7 +409,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     setCurrentEditingOrderId(orderId);
     
     return { order, waiterId: order.waiterId };
-  }, [data.orders, data.menuItems]);
+  }, [data.orders, data.menuItems, getCartKey]);
   
   const getOrderById = useCallback((orderId: string) => {
     return data.orders.find((o) => o.id === orderId);
