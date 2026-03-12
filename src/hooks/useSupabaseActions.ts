@@ -881,8 +881,9 @@ export function useSupabaseActions() {
   ) => {
     if (cart.length === 0) return null;
 
+    // Calculate using correct prices (variant or base item)
     const subtotal = cart.reduce(
-      (sum, item) => sum + item.menuItem.price * item.quantity,
+      (sum, item) => sum + getPriceForCartItem(item) * item.quantity,
       0
     );
     const gstEnabled = settings.invoice?.gstEnabled ?? true;
@@ -930,10 +931,14 @@ export function useSupabaseActions() {
     const orderItems = cart.map((item) => ({
       order_id: orderId,
       menu_item_id: item.menuItem.id,
-      menu_item_name: item.menuItem.name,
+      menu_item_name: item.variant
+        ? `${item.menuItem.name} (${item.variant.name})`
+        : item.menuItem.name,
+      variant_id: item.variant?.id || null,
+      variant_name: item.variant?.name || null,
       quantity: item.quantity,
-      unit_price: item.menuItem.price,
-      total: item.menuItem.price * item.quantity,
+      unit_price: getPriceForCartItem(item),
+      total: getPriceForCartItem(item) * item.quantity,
       notes: item.notes,
     }));
 
