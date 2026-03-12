@@ -213,7 +213,11 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     if (navigator.onLine) {
       const [{ data: orderRow, error: orderErr }, { data: itemRows, error: itemsErr }] = await Promise.all([
         supabase.from('orders').select('*').eq('id', orderId).single(),
-        supabase.from('order_items').select('*').eq('order_id', orderId),
+        supabase
+          .from('order_items')
+          .select('*')
+          .eq('order_id', orderId)
+          .order('created_at', { ascending: false }),
       ]);
 
       if (orderErr) {
@@ -222,12 +226,12 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       } else {
         if (itemsErr) console.error('fetchOrderWithItems items error:', itemsErr);
 
-        const items = (itemRows || []).map((row: any) => ({
+        const items = dedupeLatestOrderItemRows(itemRows || []).map((row: any) => ({
           menuItemId: row.menu_item_id,
           menuItemName: row.menu_item_name,
           variantId: row.variant_id || undefined,
           variantName: row.variant_name || undefined,
-          quantity: row.quantity,
+          quantity: Number(row.quantity),
           unitPrice: Number(row.unit_price),
           total: Number(row.total),
           notes: row.notes ?? undefined,
