@@ -13,13 +13,16 @@ import {
   UtensilsCrossed,
   ShoppingBag,
   Wifi,
+  WifiOff,
   ArrowLeft,
   Receipt,
   Users,
   Percent,
   XCircle,
   ShoppingCart,
+  CloudUpload,
 } from 'lucide-react';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useIsMobile } from '@/hooks/use-mobile';
 import {
   Sheet,
