@@ -915,19 +915,7 @@ export function useSupabaseActions() {
     }
 
     // Create order items with variant info
-    const orderItems = cart.map((item) => ({
-      order_id: order.id,
-      menu_item_id: item.menuItem.id,
-      menu_item_name: item.variant 
-        ? `${item.menuItem.name} (${item.variant.name})`
-        : item.menuItem.name,
-      variant_id: item.variant?.id || null,
-      variant_name: item.variant?.name || null,
-      quantity: item.quantity,
-      unit_price: getPriceForCartItem(item),
-      total: getPriceForCartItem(item) * item.quantity,
-      notes: item.notes,
-    }));
+    const orderItems = cart.map((item) => toOrderItemRow(order.id, item));
 
     const { error: itemsError } = await supabase
       .from('order_items')
