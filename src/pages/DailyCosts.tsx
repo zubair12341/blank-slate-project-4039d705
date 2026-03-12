@@ -302,7 +302,7 @@ export default function DailyCosts() {
                               <Edit2 className="h-4 w-4" />
                             </Button>
                           )}
-                          {hasPermission('admin') && (
+                          {(userRole === 'admin' || userRole === 'manager') && (
                             <Button
                               variant="ghost"
                               size="icon"
