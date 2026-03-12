@@ -479,6 +479,14 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         if (result) {
           clearCart();
           const order = await fetchOrderWithItems(result.id);
+          // Optimistically add to state so it appears immediately in all tabs
+          if (order) {
+            data.setOrders((prev: Order[]) => {
+              // Avoid duplicates if refetch already added it
+              if (prev.some((o) => o.id === order.id)) return prev;
+              return [order, ...prev];
+            });
+          }
           data.refetch();
           return order;
         }
@@ -674,6 +682,12 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         if (result) {
           clearCart();
           const order = await fetchOrderWithItems(result.id);
+          // Optimistically update state
+          if (order) {
+            data.setOrders((prev: Order[]) =>
+              prev.map((o) => (o.id === order.id ? order : o))
+            );
+          }
           data.refetch();
           return order;
         }
@@ -816,7 +830,24 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         const order = data.orders.find((o) => o.id === orderId);
         const safeTableId = explicitTableId || order?.tableId || undefined;
         await actions.settleOrder(orderId, safeTableId, paymentMethod);
-        await data.refetch();
+        // Optimistically update state
+        data.setOrders((prev: Order[]) =>
+          prev.map((o) =>
+            o.id === orderId
+              ? { ...o, status: 'completed' as const, completedAt: new Date(), paymentMethod: paymentMethod || o.paymentMethod }
+              : o
+          )
+        );
+        if (safeTableId && isUuid(safeTableId)) {
+          data.setTables((prev: Table[]) =>
+            prev.map((t) =>
+              t.id === safeTableId
+                ? { ...t, status: 'available' as const, currentOrderId: undefined }
+                : t
+            )
+          );
+        }
+        data.refetch();
         return;
       } catch (error) {
         console.error('settleOrder online error:', error);
@@ -904,7 +935,22 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         const order = data.orders.find((o) => o.id === orderId);
         const safeTableId = isUuid(order?.tableId) ? order?.tableId : undefined;
         await actions.cancelOrder(orderId, safeTableId);
-        await data.refetch();
+        // Optimistically update state
+        data.setOrders((prev: Order[]) =>
+          prev.map((o) =>
+            o.id === orderId ? { ...o, status: 'cancelled' as const } : o
+          )
+        );
+        if (safeTableId) {
+          data.setTables((prev: Table[]) =>
+            prev.map((t) =>
+              t.id === safeTableId
+                ? { ...t, status: 'available' as const, currentOrderId: undefined }
+                : t
+            )
+          );
+        }
+        data.refetch();
         return;
       } catch (error) {
         console.error('cancelOrder online error:', error);
