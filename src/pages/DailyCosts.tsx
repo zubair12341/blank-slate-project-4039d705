@@ -293,7 +293,7 @@ export default function DailyCosts() {
                       </td>
                       <td className="text-right">
                         <div className="flex justify-end gap-1">
-                          {(hasPermission('admin') || hasPermission('manager')) && (
+                          {(userRole === 'admin' || userRole === 'manager') && (
                             <Button
                               variant="ghost"
                               size="icon"
