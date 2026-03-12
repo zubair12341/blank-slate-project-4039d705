@@ -142,7 +142,7 @@ export default function DailyCosts() {
   };
 
   const handleDeleteExpense = async (id: string) => {
-    if (!hasPermission('admin')) {
+    if (userRole !== 'admin' && userRole !== 'manager') {
       toast.error('Only admins can delete expenses');
       return;
     }
