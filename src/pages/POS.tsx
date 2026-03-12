@@ -778,7 +778,7 @@ export default function POS() {
     </>
   );
 
-  const { isOnline, pendingSyncCount } = useOnlineStatus();
+
 
   // Main POS Screen
   return (
