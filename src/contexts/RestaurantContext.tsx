@@ -795,7 +795,11 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         completedAt: undefined,
       };
 
-      data.refetch();
+      // Directly update React orders state
+      data.setOrders((prev: Order[]) =>
+        prev.map((o) => o.id === orderId ? order : o)
+      );
+
       return order;
     } catch (offlineError) {
       console.error('updateOrder offline error:', offlineError);
