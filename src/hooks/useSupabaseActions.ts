@@ -760,91 +760,87 @@ export function useSupabaseActions() {
       desiredRows.map((row) => [getOrderItemKey(row.menu_item_id, row.variant_id), row])
     );
 
-    const { data: existingRows, error: existingError } = await supabase
+    if (desiredRows.length === 0) {
+      const { error: clearError } = await supabase
+        .from('order_items')
+        .update({ quantity: 0, total: 0, notes: null })
+        .eq('order_id', orderId)
+        .gt('quantity', 0);
+
+      if (clearError) throw clearError;
+      return;
+    }
+
+    // Insert the full latest snapshot first; then collapse all active rows to one per key.
+    // This is resilient to RLS constraints, partial legacy data, and rapid repeated updates.
+    const { error: insertError } = await supabase.from('order_items').insert(desiredRows);
+    if (insertError) throw insertError;
+
+    const { data: activeRows, error: activeRowsError } = await supabase
       .from('order_items')
-      .select('id, menu_item_id, variant_id, created_at')
+      .select('id, menu_item_id, variant_id, quantity, created_at')
       .eq('order_id', orderId)
-      .order('created_at', { ascending: false });
+      .gt('quantity', 0)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false });
 
-    if (existingError) throw existingError;
+    if (activeRowsError) throw activeRowsError;
 
-    const existingByKey = new Map<string, any[]>();
-    (existingRows || []).forEach((row: any) => {
+    const keptKeys = new Set<string>();
+    const idsToZero: string[] = [];
+    const rowsToAlign: Array<{ id: string; desired: ReturnType<typeof toOrderItemRow> }> = [];
+
+    for (const row of activeRows || []) {
       const key = getOrderItemKey(row.menu_item_id, row.variant_id);
-      const existing = existingByKey.get(key) || [];
-      existing.push(row);
-      existingByKey.set(key, existing);
-    });
+      const desired = desiredByKey.get(key);
 
-    const updates: any[] = [];
-    const inserts: any[] = [];
-
-    for (const [key, desired] of desiredByKey.entries()) {
-      const matches = existingByKey.get(key) || [];
-
-      if (matches.length === 0) {
-        inserts.push(desired);
+      if (!desired) {
+        idsToZero.push(row.id);
         continue;
       }
 
-      const [primary, ...duplicates] = matches;
+      if (!keptKeys.has(key)) {
+        keptKeys.add(key);
+        rowsToAlign.push({ id: row.id, desired });
+      } else {
+        idsToZero.push(row.id);
+      }
+    }
 
-      updates.push(
-        supabase
-          .from('order_items')
-          .update({
-            menu_item_name: desired.menu_item_name,
-            variant_id: desired.variant_id,
-            variant_name: desired.variant_name,
-            quantity: desired.quantity,
-            unit_price: desired.unit_price,
-            total: desired.total,
-            notes: desired.notes,
-          })
-          .eq('id', primary.id)
+    const missingKeys = Array.from(desiredByKey.keys()).filter((key) => !keptKeys.has(key));
+    if (missingKeys.length > 0) {
+      throw new Error(`Failed to persist updated order items for keys: ${missingKeys.join(', ')}`);
+    }
+
+    if (idsToZero.length > 0) {
+      const { error: zeroError } = await supabase
+        .from('order_items')
+        .update({ quantity: 0, total: 0, notes: null })
+        .in('id', idsToZero);
+
+      if (zeroError) throw zeroError;
+    }
+
+    if (rowsToAlign.length > 0) {
+      const alignResults = await Promise.all(
+        rowsToAlign.map(({ id, desired }) =>
+          supabase
+            .from('order_items')
+            .update({
+              menu_item_name: desired.menu_item_name,
+              variant_id: desired.variant_id,
+              variant_name: desired.variant_name,
+              quantity: desired.quantity,
+              unit_price: desired.unit_price,
+              total: desired.total,
+              notes: desired.notes,
+            })
+            .eq('id', id)
+        )
       );
 
-      for (const duplicate of duplicates) {
-        updates.push(
-          supabase
-            .from('order_items')
-            .update({
-              quantity: 0,
-              total: 0,
-              notes: null,
-            })
-            .eq('id', duplicate.id)
-        );
-      }
-
-      existingByKey.delete(key);
-    }
-
-    // Any remaining rows are items removed from cart.
-    for (const staleRows of existingByKey.values()) {
-      for (const stale of staleRows) {
-        updates.push(
-          supabase
-            .from('order_items')
-            .update({
-              quantity: 0,
-              total: 0,
-              notes: null,
-            })
-            .eq('id', stale.id)
-        );
-      }
-    }
-
-    if (updates.length > 0) {
-      const results = await Promise.all(updates);
-      const failed = results.find((result: any) => result.error);
+      const failed = alignResults.find((result: any) => result.error);
       if (failed?.error) throw failed.error;
-    }
-
-    if (inserts.length > 0) {
-      const { error: insertError } = await supabase.from('order_items').insert(inserts);
-      if (insertError) throw insertError;
     }
   };
 
