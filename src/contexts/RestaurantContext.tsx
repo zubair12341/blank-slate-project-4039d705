@@ -178,6 +178,26 @@ const UUID_RE =
 
 const isUuid = (value?: string | null) => !!value && UUID_RE.test(value);
 
+const getOrderItemKey = (menuItemId: string, variantId?: string | null) =>
+  `${menuItemId}::${variantId || 'base'}`;
+
+const dedupeLatestOrderItemRows = (rows: any[]) => {
+  const sortedRows = [...rows].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  const unique = new Map<string, any>();
+  for (const row of sortedRows) {
+    if (Number(row.quantity) <= 0) continue;
+    const key = getOrderItemKey(row.menu_item_id, row.variant_id);
+    if (!unique.has(key)) {
+      unique.set(key, row);
+    }
+  }
+
+  return Array.from(unique.values());
+};
+
 export function RestaurantProvider({ children }: { children: React.ReactNode }) {
   const data = useSupabaseData();
   const actions = useSupabaseActions();
