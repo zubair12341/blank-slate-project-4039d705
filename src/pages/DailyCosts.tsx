@@ -33,7 +33,7 @@ const expenseCategories = [
 ];
 
 export default function DailyCosts() {
-  const { user, hasPermission } = useAuth();
+  const { user, userRole } = useAuth();
   const { settings, getTodaysSales } = useRestaurant();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
