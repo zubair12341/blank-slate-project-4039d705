@@ -78,7 +78,7 @@ export async function getDb(): Promise<IDBPDatabase<OfflineDBSchema>> {
 
 type DataStoreNames = 'ingredients' | 'menu_categories' | 'menu_items' | 'menu_item_variants' |
   'restaurant_tables' | 'waiters' | 'orders' | 'order_items' | 'restaurant_settings' |
-  'stock_purchases' | 'stock_transfers' | 'stock_removals' | 'stock_sales';
+  'stock_purchases' | 'stock_transfers' | 'stock_removals' | 'stock_sales' | 'expenses';
 
 export async function cacheTableData(storeName: DataStoreNames, rows: any[]) {
   const db = await getDb();
