@@ -295,12 +295,11 @@ export function useSupabaseData() {
     if (raw.removals?.length) setStockRemovals(raw.removals.map(transformStockRemoval));
     if (raw.sales?.length) setStockSales(raw.sales.map(transformStockSale));
 
-    // Build orders with items
+    // Build orders with deduped latest items per menu item + variant key
     if (raw.orders?.length) {
       const ordersWithItems = raw.orders.map((order: any) => {
-        const items = (raw.orderItems || [])
-          .filter((item: any) => item.order_id === order.id)
-          .map(transformOrderItem);
+        const orderRows = (raw.orderItems || []).filter((item: any) => item.order_id === order.id);
+        const items = dedupeLatestOrderItems(orderRows).map(transformOrderItem);
         return transformOrder(order, items);
       });
       setOrders(ordersWithItems);
