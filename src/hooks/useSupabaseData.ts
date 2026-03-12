@@ -373,7 +373,8 @@ export function useSupabaseData() {
         const { data: oi } = await supabase
           .from('order_items')
           .select('*')
-          .in('order_id', orderIds);
+          .in('order_id', orderIds)
+          .order('created_at', { ascending: false });
         orderItemsData = oi || [];
       }
 
