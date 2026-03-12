@@ -146,11 +146,30 @@ const transformOrderItem = (row: any): OrderItem => ({
   menuItemName: row.menu_item_name,
   variantId: row.variant_id || undefined,
   variantName: row.variant_name || undefined,
-  quantity: row.quantity,
+  quantity: Number(row.quantity),
   unitPrice: Number(row.unit_price),
   total: Number(row.total),
   notes: row.notes,
 });
+
+const getOrderItemKey = (row: any) => `${row.menu_item_id}::${row.variant_id || 'base'}`;
+
+const dedupeLatestOrderItems = (rows: any[]) => {
+  const sortedRows = [...rows].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  const unique = new Map<string, any>();
+  for (const row of sortedRows) {
+    if (Number(row.quantity) <= 0) continue;
+    const key = getOrderItemKey(row);
+    if (!unique.has(key)) {
+      unique.set(key, row);
+    }
+  }
+
+  return Array.from(unique.values());
+};
 
 const transformStockPurchase = (row: any): StockPurchase => ({
   id: row.id,
