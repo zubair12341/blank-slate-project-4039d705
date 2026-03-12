@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { cacheTableData, getCachedData, addToSyncQueue } from '@/lib/offlineDb';
 
 interface Expense {
   id: string;
