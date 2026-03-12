@@ -479,6 +479,14 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         if (result) {
           clearCart();
           const order = await fetchOrderWithItems(result.id);
+          // Optimistically add to state so it appears immediately in all tabs
+          if (order) {
+            data.setOrders((prev: Order[]) => {
+              // Avoid duplicates if refetch already added it
+              if (prev.some((o) => o.id === order.id)) return prev;
+              return [order, ...prev];
+            });
+          }
           data.refetch();
           return order;
         }
