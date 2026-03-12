@@ -593,59 +593,288 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   }, [cart, settings, data.tables, data.waiters, data.ingredients, actions, clearCart, data.refetch, fetchOrderWithItems]);
   
   const updateOrderAction = useCallback(async (orderId: string, orderDetails: any): Promise<Order | null> => {
-    // Capture cart snapshot before any async operations
     const cartSnapshot = [...cart];
     if (cartSnapshot.length === 0) {
       console.error('updateOrder: Cart is empty');
       return null;
     }
-    
-    try {
-      const result = await actions.updateOrder(
-        orderId,
-        cartSnapshot,
-        orderDetails,
-        settings,
-        data.tables,
-        data.waiters
-      );
-      if (result) {
-        // Only clear cart after successful update
-        clearCart();
-        // Fetch the order with items immediately for the completion modal
-        const order = await fetchOrderWithItems(result.id);
-        // Background refetch to update local state
-        data.refetch();
-        return order;
+
+    // ── Online path ──
+    if (navigator.onLine) {
+      try {
+        const result = await actions.updateOrder(
+          orderId,
+          cartSnapshot,
+          orderDetails,
+          settings,
+          data.tables,
+          data.waiters
+        );
+        if (result) {
+          clearCart();
+          const order = await fetchOrderWithItems(result.id);
+          data.refetch();
+          return order;
+        }
+        return null;
+      } catch (error) {
+        console.error('updateOrder online error:', error);
+        // Fall through to offline path
       }
-      return null;
-    } catch (error) {
-      console.error('updateOrder error:', error);
+    }
+
+    // ── Offline path ──
+    try {
+      const { toast } = await import('sonner');
+      const table = data.tables.find((t) => t.id === orderDetails.tableId);
+      const waiter = data.waiters.find((w) => w.id === orderDetails.waiterId);
+
+      const subtotal = cartSnapshot.reduce((sum, item) => {
+        const price = item.variant ? item.variant.price : item.menuItem.price;
+        return sum + price * item.quantity;
+      }, 0);
+      const gstEnabled = settings.invoice?.gstEnabled ?? true;
+      const tax = gstEnabled ? subtotal * (settings.taxRate / 100) : 0;
+      const discountType = orderDetails.discountType || 'fixed';
+      const discountValue = orderDetails.discountValue || 0;
+      const discount = discountType === 'percentage'
+        ? (subtotal * discountValue) / 100
+        : discountValue;
+      const total = subtotal + tax - discount;
+
+      const updatedOrderRow = {
+        id: orderId,
+        subtotal,
+        tax,
+        discount,
+        discount_type: discountType,
+        discount_value: discountValue,
+        discount_reason: orderDetails.discountReason || null,
+        total,
+        payment_method: orderDetails.paymentMethod,
+        customer_name: orderDetails.customerName || null,
+        table_id: orderDetails.tableId || null,
+        table_number: table?.number || null,
+        waiter_id: orderDetails.waiterId || null,
+        waiter_name: waiter?.name || null,
+      };
+
+      const orderItemRows = cartSnapshot.map((item) => {
+        const price = item.variant ? item.variant.price : item.menuItem.price;
+        return {
+          id: crypto.randomUUID(),
+          order_id: orderId,
+          menu_item_id: item.menuItem.id,
+          menu_item_name: item.variant
+            ? `${item.menuItem.name} (${item.variant.name})`
+            : item.menuItem.name,
+          variant_id: item.variant?.id || null,
+          variant_name: item.variant?.name || null,
+          quantity: item.quantity,
+          unit_price: price,
+          total: price * item.quantity,
+          notes: item.notes || null,
+          created_at: new Date().toISOString(),
+        };
+      });
+
+      // Update order in IndexedDB cache
+      const cachedOrders = await getCachedData('orders');
+      const updatedOrders = cachedOrders.map((o: any) =>
+        o.id === orderId ? { ...o, ...updatedOrderRow } : o
+      );
+      await cacheTableData('orders', updatedOrders);
+
+      // Replace order items in cache
+      const cachedItems = await getCachedData('order_items');
+      const otherItems = cachedItems.filter((i: any) => i.order_id !== orderId);
+      await cacheTableData('order_items', [...orderItemRows, ...otherItems]);
+
+      // Queue for sync
+      await addToSyncQueue({
+        table: 'orders',
+        action: 'update',
+        data: updatedOrderRow,
+        timestamp: Date.now(),
+      });
+
+      clearCart();
+      toast.success('Order updated offline — will sync when online');
+
+      // Build order object for completion modal
+      const order: Order = {
+        id: orderId,
+        orderNumber: cachedOrders.find((o: any) => o.id === orderId)?.order_number || '',
+        items: orderItemRows.map((r) => ({
+          menuItemId: r.menu_item_id,
+          menuItemName: r.menu_item_name,
+          variantId: r.variant_id || undefined,
+          variantName: r.variant_name || undefined,
+          quantity: r.quantity,
+          unitPrice: r.unit_price,
+          total: r.total,
+          notes: r.notes,
+        })),
+        subtotal,
+        tax,
+        discount,
+        discountType: discountType as any,
+        discountValue,
+        discountReason: orderDetails.discountReason || undefined,
+        total,
+        paymentMethod: orderDetails.paymentMethod,
+        status: 'pending',
+        customerName: orderDetails.customerName || null,
+        tableId: orderDetails.tableId || null,
+        tableNumber: table?.number || null,
+        waiterId: orderDetails.waiterId || null,
+        waiterName: waiter?.name || null,
+        orderType: orderDetails.orderType,
+        createdAt: new Date(),
+        completedAt: undefined,
+      };
+
+      data.refetch();
+      return order;
+    } catch (offlineError) {
+      console.error('updateOrder offline error:', offlineError);
+      const { toast } = await import('sonner');
+      toast.error('Failed to update order offline');
       return null;
     }
   }, [cart, settings, data.tables, data.waiters, actions, clearCart, data.refetch, fetchOrderWithItems]);
   
   const settleOrderAction = useCallback(async (orderId: string, paymentMethod?: 'cash' | 'card' | 'mobile', explicitTableId?: string) => {
+    // ── Online path ──
+    if (navigator.onLine) {
+      try {
+        const order = data.orders.find((o) => o.id === orderId);
+        const safeTableId = explicitTableId || order?.tableId || undefined;
+        await actions.settleOrder(orderId, safeTableId, paymentMethod);
+        await data.refetch();
+        return;
+      } catch (error) {
+        console.error('settleOrder online error:', error);
+        // Fall through to offline path
+      }
+    }
+
+    // ── Offline path ──
     try {
+      const { toast } = await import('sonner');
       const order = data.orders.find((o) => o.id === orderId);
-      const safeTableId = explicitTableId || order?.tableId || undefined;
-      await actions.settleOrder(orderId, safeTableId, paymentMethod);
+      const tableId = explicitTableId || order?.tableId || undefined;
+
+      const updatePayload: any = {
+        id: orderId,
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+      };
+      if (paymentMethod) updatePayload.payment_method = paymentMethod;
+
+      // Update order in cache
+      const cachedOrders = await getCachedData('orders');
+      const updatedOrders = cachedOrders.map((o: any) =>
+        o.id === orderId ? { ...o, ...updatePayload } : o
+      );
+      await cacheTableData('orders', updatedOrders);
+
+      // Queue order update for sync
+      await addToSyncQueue({
+        table: 'orders',
+        action: 'update',
+        data: updatePayload,
+        timestamp: Date.now(),
+      });
+
+      // Free table locally
+      if (tableId && isUuid(tableId)) {
+        const cachedTables = await getCachedData('restaurant_tables');
+        const updatedTables = cachedTables.map((t: any) =>
+          t.id === tableId
+            ? { ...t, status: 'available', current_order_id: null }
+            : t
+        );
+        await cacheTableData('restaurant_tables', updatedTables);
+
+        await addToSyncQueue({
+          table: 'restaurant_tables',
+          action: 'update',
+          data: { id: tableId, status: 'available', current_order_id: null },
+          timestamp: Date.now() + 1,
+        });
+      }
+
+      toast.success('Order settled offline — will sync when online');
       await data.refetch();
-    } catch (error) {
-      console.error('settleOrder error:', error);
-      throw error;
+    } catch (offlineError) {
+      console.error('settleOrder offline error:', offlineError);
+      const { toast } = await import('sonner');
+      toast.error('Failed to settle order offline');
+      throw offlineError;
     }
   }, [data.orders, actions, data.refetch]);
   
   const cancelOrderAction = useCallback(async (orderId: string) => {
+    // ── Online path ──
+    if (navigator.onLine) {
+      try {
+        const order = data.orders.find((o) => o.id === orderId);
+        const safeTableId = isUuid(order?.tableId) ? order?.tableId : undefined;
+        await actions.cancelOrder(orderId, safeTableId);
+        await data.refetch();
+        return;
+      } catch (error) {
+        console.error('cancelOrder online error:', error);
+        // Fall through to offline path
+      }
+    }
+
+    // ── Offline path ──
     try {
+      const { toast } = await import('sonner');
       const order = data.orders.find((o) => o.id === orderId);
-      const safeTableId = isUuid(order?.tableId) ? order?.tableId : undefined;
-      await actions.cancelOrder(orderId, safeTableId);
+      const tableId = isUuid(order?.tableId) ? order?.tableId : undefined;
+
+      // Update order status in cache
+      const cachedOrders = await getCachedData('orders');
+      const updatedOrders = cachedOrders.map((o: any) =>
+        o.id === orderId ? { ...o, status: 'cancelled' } : o
+      );
+      await cacheTableData('orders', updatedOrders);
+
+      await addToSyncQueue({
+        table: 'orders',
+        action: 'update',
+        data: { id: orderId, status: 'cancelled' },
+        timestamp: Date.now(),
+      });
+
+      // Free table locally
+      if (tableId) {
+        const cachedTables = await getCachedData('restaurant_tables');
+        const updatedTables = cachedTables.map((t: any) =>
+          t.id === tableId
+            ? { ...t, status: 'available', current_order_id: null }
+            : t
+        );
+        await cacheTableData('restaurant_tables', updatedTables);
+
+        await addToSyncQueue({
+          table: 'restaurant_tables',
+          action: 'update',
+          data: { id: tableId, status: 'available', current_order_id: null },
+          timestamp: Date.now() + 1,
+        });
+      }
+
+      toast.success('Order cancelled offline — will sync when online');
       await data.refetch();
-    } catch (error) {
-      console.error('cancelOrder error:', error);
-      throw error;
+    } catch (offlineError) {
+      console.error('cancelOrder offline error:', offlineError);
+      const { toast } = await import('sonner');
+      toast.error('Failed to cancel order offline');
+      throw offlineError;
     }
   }, [data.orders, actions, data.refetch]);
   
