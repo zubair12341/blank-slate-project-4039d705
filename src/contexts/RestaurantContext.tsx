@@ -587,6 +587,16 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         );
         await cacheTableData('restaurant_tables', updatedTables);
 
+        // Directly update React state so UI reflects immediately
+        data.setTables(updatedTables.map((row: any) => ({
+          id: row.id,
+          number: row.table_number,
+          capacity: row.capacity,
+          floor: row.floor as TableFloor,
+          status: row.status as 'available' | 'occupied',
+          currentOrderId: row.current_order_id,
+        })));
+
         await addToSyncQueue({
           table: 'restaurant_tables',
           action: 'update',
@@ -631,8 +641,9 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         completedAt: undefined,
       };
 
-      // Update local state
-      data.refetch();
+      // Update local orders state directly
+      data.setOrders((prev: Order[]) => [order, ...prev]);
+
       return order;
     } catch (offlineError) {
       console.error('completeOrder offline error:', offlineError);
@@ -784,7 +795,11 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         completedAt: undefined,
       };
 
-      data.refetch();
+      // Directly update React orders state
+      data.setOrders((prev: Order[]) =>
+        prev.map((o) => o.id === orderId ? order : o)
+      );
+
       return order;
     } catch (offlineError) {
       console.error('updateOrder offline error:', offlineError);
@@ -829,6 +844,15 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       );
       await cacheTableData('orders', updatedOrders);
 
+      // Directly update React orders state
+      data.setOrders((prev: Order[]) =>
+        prev.map((o) =>
+          o.id === orderId
+            ? { ...o, status: 'completed' as const, completedAt: new Date(), paymentMethod: paymentMethod || o.paymentMethod }
+            : o
+        )
+      );
+
       // Queue order update for sync
       await addToSyncQueue({
         table: 'orders',
@@ -847,6 +871,15 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         );
         await cacheTableData('restaurant_tables', updatedTables);
 
+        // Directly update React tables state
+        data.setTables((prev: Table[]) =>
+          prev.map((t) =>
+            t.id === tableId
+              ? { ...t, status: 'available' as const, currentOrderId: undefined }
+              : t
+          )
+        );
+
         await addToSyncQueue({
           table: 'restaurant_tables',
           action: 'update',
@@ -856,7 +889,6 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       }
 
       toast.success('Order settled offline — will sync when online');
-      await data.refetch();
     } catch (offlineError) {
       console.error('settleOrder offline error:', offlineError);
       const { toast } = await import('sonner');
@@ -893,6 +925,13 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       );
       await cacheTableData('orders', updatedOrders);
 
+      // Directly update React orders state
+      data.setOrders((prev: Order[]) =>
+        prev.map((o) =>
+          o.id === orderId ? { ...o, status: 'cancelled' as const } : o
+        )
+      );
+
       await addToSyncQueue({
         table: 'orders',
         action: 'update',
@@ -910,6 +949,15 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         );
         await cacheTableData('restaurant_tables', updatedTables);
 
+        // Directly update React tables state
+        data.setTables((prev: Table[]) =>
+          prev.map((t) =>
+            t.id === tableId
+              ? { ...t, status: 'available' as const, currentOrderId: undefined }
+              : t
+          )
+        );
+
         await addToSyncQueue({
           table: 'restaurant_tables',
           action: 'update',
@@ -919,7 +967,6 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       }
 
       toast.success('Order cancelled offline — will sync when online');
-      await data.refetch();
     } catch (offlineError) {
       console.error('cancelOrder offline error:', offlineError);
       const { toast } = await import('sonner');
