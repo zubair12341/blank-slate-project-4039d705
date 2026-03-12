@@ -776,7 +776,7 @@ export function useSupabaseActions() {
       existingByKey.set(key, existing);
     });
 
-    const updates: Promise<any>[] = [];
+    const updates: any[] = [];
     const inserts: any[] = [];
 
     for (const [key, desired] of desiredByKey.entries()) {
