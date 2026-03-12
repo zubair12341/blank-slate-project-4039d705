@@ -189,54 +189,104 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
   const settings = data.settings || defaultSettings;
 
   const fetchOrderWithItems = useCallback(async (orderId: string): Promise<Order | null> => {
-    // Fetch the order + items directly so callers (POS/Orders) can open modals immediately
-    // without waiting for React state to propagate after refetch().
-    const [{ data: orderRow, error: orderErr }, { data: itemRows, error: itemsErr }] = await Promise.all([
-      supabase.from('orders').select('*').eq('id', orderId).single(),
-      supabase.from('order_items').select('*').eq('order_id', orderId),
-    ]);
+    // ── Online: fetch from Supabase ──
+    if (navigator.onLine) {
+      const [{ data: orderRow, error: orderErr }, { data: itemRows, error: itemsErr }] = await Promise.all([
+        supabase.from('orders').select('*').eq('id', orderId).single(),
+        supabase.from('order_items').select('*').eq('order_id', orderId),
+      ]);
 
-    if (orderErr) {
-      console.error('fetchOrderWithItems order error:', orderErr);
+      if (orderErr) {
+        console.error('fetchOrderWithItems order error:', orderErr);
+        // Fall through to offline
+      } else {
+        if (itemsErr) console.error('fetchOrderWithItems items error:', itemsErr);
+
+        const items = (itemRows || []).map((row: any) => ({
+          menuItemId: row.menu_item_id,
+          menuItemName: row.menu_item_name,
+          variantId: row.variant_id || undefined,
+          variantName: row.variant_name || undefined,
+          quantity: row.quantity,
+          unitPrice: Number(row.unit_price),
+          total: Number(row.total),
+          notes: row.notes ?? undefined,
+        }));
+
+        const order: Order = {
+          id: orderRow.id,
+          orderNumber: orderRow.order_number,
+          items,
+          subtotal: Number(orderRow.subtotal),
+          tax: Number(orderRow.tax),
+          discount: Number(orderRow.discount),
+          discountType: orderRow.discount_type as any,
+          discountValue: Number(orderRow.discount_value),
+          discountReason: orderRow.discount_reason || undefined,
+          total: Number(orderRow.total),
+          paymentMethod: orderRow.payment_method as any,
+          status: orderRow.status as any,
+          customerName: orderRow.customer_name,
+          tableId: orderRow.table_id,
+          tableNumber: orderRow.table_number,
+          waiterId: orderRow.waiter_id,
+          waiterName: orderRow.waiter_name,
+          orderType: orderRow.order_type as any,
+          createdAt: new Date(orderRow.created_at),
+          completedAt: orderRow.completed_at ? new Date(orderRow.completed_at) : undefined,
+        };
+
+        return order;
+      }
+    }
+
+    // ── Offline: fetch from IndexedDB cache ──
+    try {
+      const cachedOrders = await getCachedData('orders');
+      const orderRow = cachedOrders.find((o: any) => o.id === orderId);
+      if (!orderRow) return null;
+
+      const cachedItems = await getCachedData('order_items');
+      const itemRows = cachedItems.filter((i: any) => i.order_id === orderId);
+
+      const items = itemRows.map((row: any) => ({
+        menuItemId: row.menu_item_id,
+        menuItemName: row.menu_item_name,
+        variantId: row.variant_id || undefined,
+        variantName: row.variant_name || undefined,
+        quantity: row.quantity,
+        unitPrice: Number(row.unit_price),
+        total: Number(row.total),
+        notes: row.notes ?? undefined,
+      }));
+
+      const order: Order = {
+        id: orderRow.id,
+        orderNumber: orderRow.order_number,
+        items,
+        subtotal: Number(orderRow.subtotal),
+        tax: Number(orderRow.tax),
+        discount: Number(orderRow.discount),
+        discountType: orderRow.discount_type as any,
+        discountValue: Number(orderRow.discount_value),
+        discountReason: orderRow.discount_reason || undefined,
+        total: Number(orderRow.total),
+        paymentMethod: orderRow.payment_method as any,
+        status: orderRow.status as any,
+        customerName: orderRow.customer_name,
+        tableId: orderRow.table_id,
+        tableNumber: orderRow.table_number,
+        waiterId: orderRow.waiter_id,
+        waiterName: orderRow.waiter_name,
+        orderType: orderRow.order_type as any,
+        createdAt: new Date(orderRow.created_at),
+        completedAt: orderRow.completed_at ? new Date(orderRow.completed_at) : undefined,
+      };
+
+      return order;
+    } catch {
       return null;
     }
-    if (itemsErr) {
-      console.error('fetchOrderWithItems items error:', itemsErr);
-    }
-
-    const items = (itemRows || []).map((row: any) => ({
-      menuItemId: row.menu_item_id,
-      menuItemName: row.menu_item_name,
-      quantity: row.quantity,
-      unitPrice: Number(row.unit_price),
-      total: Number(row.total),
-      notes: row.notes ?? undefined,
-    }));
-
-    const order: Order = {
-      id: orderRow.id,
-      orderNumber: orderRow.order_number,
-      items,
-      subtotal: Number(orderRow.subtotal),
-      tax: Number(orderRow.tax),
-      discount: Number(orderRow.discount),
-      discountType: orderRow.discount_type as any,
-      discountValue: Number(orderRow.discount_value),
-      discountReason: orderRow.discount_reason || undefined,
-      total: Number(orderRow.total),
-      paymentMethod: orderRow.payment_method as any,
-      status: orderRow.status as any,
-      customerName: orderRow.customer_name,
-      tableId: orderRow.table_id,
-      tableNumber: orderRow.table_number,
-      waiterId: orderRow.waiter_id,
-      waiterName: orderRow.waiter_name,
-      orderType: orderRow.order_type as any,
-      createdAt: new Date(orderRow.created_at),
-      completedAt: orderRow.completed_at ? new Date(orderRow.completed_at) : undefined,
-    };
-
-    return order;
   }, []);
   
   // Cart actions - support variants with unique cart keys (menuItemId:variantId)
