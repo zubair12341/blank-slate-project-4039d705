@@ -527,6 +527,24 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         });
       }
 
+      // Occupy table locally if dine-in
+      if (orderDetails.orderType === 'dine-in' && orderDetails.tableId) {
+        const cachedTables = await getCachedData('restaurant_tables');
+        const updatedTables = cachedTables.map((t: any) =>
+          t.id === orderDetails.tableId
+            ? { ...t, status: 'occupied', current_order_id: orderId }
+            : t
+        );
+        await cacheTableData('restaurant_tables', updatedTables);
+
+        await addToSyncQueue({
+          table: 'restaurant_tables',
+          action: 'update',
+          data: { id: orderDetails.tableId, status: 'occupied', current_order_id: orderId },
+          timestamp: Date.now() + 2,
+        });
+      }
+
       clearCart();
       toast.success(`Order ${orderNumber} saved offline — will sync when online`);
 
