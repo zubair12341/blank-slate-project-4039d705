@@ -830,7 +830,24 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         const order = data.orders.find((o) => o.id === orderId);
         const safeTableId = explicitTableId || order?.tableId || undefined;
         await actions.settleOrder(orderId, safeTableId, paymentMethod);
-        await data.refetch();
+        // Optimistically update state
+        data.setOrders((prev: Order[]) =>
+          prev.map((o) =>
+            o.id === orderId
+              ? { ...o, status: 'completed' as const, completedAt: new Date(), paymentMethod: paymentMethod || o.paymentMethod }
+              : o
+          )
+        );
+        if (safeTableId && isUuid(safeTableId)) {
+          data.setTables((prev: Table[]) =>
+            prev.map((t) =>
+              t.id === safeTableId
+                ? { ...t, status: 'available' as const, currentOrderId: undefined }
+                : t
+            )
+          );
+        }
+        data.refetch();
         return;
       } catch (error) {
         console.error('settleOrder online error:', error);
