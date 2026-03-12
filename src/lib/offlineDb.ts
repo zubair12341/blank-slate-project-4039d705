@@ -43,6 +43,7 @@ export async function getDb(): Promise<IDBPDatabase<OfflineDBSchema>> {
         'ingredients', 'menu_categories', 'menu_items', 'menu_item_variants',
         'restaurant_tables', 'waiters', 'orders', 'restaurant_settings',
         'stock_purchases', 'stock_transfers', 'stock_removals', 'stock_sales',
+        'expenses',
       ] as const;
 
       for (const store of stores) {
