@@ -587,6 +587,16 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         );
         await cacheTableData('restaurant_tables', updatedTables);
 
+        // Directly update React state so UI reflects immediately
+        data.setTables(updatedTables.map((row: any) => ({
+          id: row.id,
+          number: row.table_number,
+          capacity: row.capacity,
+          floor: row.floor as TableFloor,
+          status: row.status as 'available' | 'occupied',
+          currentOrderId: row.current_order_id,
+        })));
+
         await addToSyncQueue({
           table: 'restaurant_tables',
           action: 'update',
@@ -631,8 +641,9 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         completedAt: undefined,
       };
 
-      // Update local state
-      data.refetch();
+      // Update local orders state directly
+      data.setOrders((prev: Order[]) => [order, ...prev]);
+
       return order;
     } catch (offlineError) {
       console.error('completeOrder offline error:', offlineError);
