@@ -469,5 +469,8 @@ export function useSupabaseData() {
     stockRemovals,
     stockSales,
     refetch: fetchAll,
+    // Direct state setters for offline mutations
+    setTables,
+    setOrders,
   };
 }
