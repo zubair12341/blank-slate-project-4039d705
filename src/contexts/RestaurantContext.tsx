@@ -935,7 +935,22 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         const order = data.orders.find((o) => o.id === orderId);
         const safeTableId = isUuid(order?.tableId) ? order?.tableId : undefined;
         await actions.cancelOrder(orderId, safeTableId);
-        await data.refetch();
+        // Optimistically update state
+        data.setOrders((prev: Order[]) =>
+          prev.map((o) =>
+            o.id === orderId ? { ...o, status: 'cancelled' as const } : o
+          )
+        );
+        if (safeTableId) {
+          data.setTables((prev: Table[]) =>
+            prev.map((t) =>
+              t.id === safeTableId
+                ? { ...t, status: 'available' as const, currentOrderId: undefined }
+                : t
+            )
+          );
+        }
+        data.refetch();
         return;
       } catch (error) {
         console.error('cancelOrder online error:', error);
