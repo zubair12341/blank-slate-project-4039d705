@@ -1027,57 +1027,12 @@ export function useSupabaseActions() {
       throw orderError;
     }
 
-    // Delete old items – check for errors and verify deletion
-    const { error: deleteError } = await supabase
-      .from('order_items')
-      .delete()
-      .eq('order_id', orderId);
-
-    if (deleteError) {
-      console.error('Failed to delete old order items:', deleteError);
-      // Try deleting by fetching IDs first
-      const { data: existingItems } = await supabase
-        .from('order_items')
-        .select('id')
-        .eq('order_id', orderId);
-      if (existingItems && existingItems.length > 0) {
-        for (const item of existingItems) {
-          await supabase.from('order_items').delete().eq('id', item.id);
-        }
-      }
-    }
-
-    // Verify old items are actually gone before inserting new ones
-    const { data: remainingItems } = await supabase
-      .from('order_items')
-      .select('id')
-      .eq('order_id', orderId);
-
-    if (remainingItems && remainingItems.length > 0) {
-      console.warn('Order items still exist after delete, removing individually...');
-      const ids = remainingItems.map((r: any) => r.id);
-      await supabase.from('order_items').delete().in('id', ids);
-    }
-
-    const orderItems = cart.map((item) => ({
-      order_id: orderId,
-      menu_item_id: item.menuItem.id,
-      menu_item_name: item.variant
-        ? `${item.menuItem.name} (${item.variant.name})`
-        : item.menuItem.name,
-      variant_id: item.variant?.id || null,
-      variant_name: item.variant?.name || null,
-      quantity: item.quantity,
-      unit_price: getPriceForCartItem(item),
-      total: getPriceForCartItem(item) * item.quantity,
-      notes: item.notes,
-    }));
-
-    const { error: insertError } = await supabase.from('order_items').insert(orderItems);
-    if (insertError) {
-      console.error('Failed to insert new order items:', insertError);
+    try {
+      await syncOrderItemsForUpdate(orderId, cart);
+    } catch (orderItemsError) {
+      console.error('Failed to sync order items during update:', orderItemsError);
       toast.error('Failed to update order items');
-      throw insertError;
+      throw orderItemsError;
     }
 
     toast.success('Order updated');
