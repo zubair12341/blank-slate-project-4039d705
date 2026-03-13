@@ -808,7 +808,7 @@ export function useSupabaseActions() {
     }
 
     // Execute all operations
-    const promises: Promise<any>[] = [];
+    const promises: Promise<void>[] = [];
 
     // Zero out removed/duplicate items
     if (idsToZero.length > 0) {
