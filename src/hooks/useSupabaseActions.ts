@@ -813,40 +813,43 @@ export function useSupabaseActions() {
     // Zero out removed/duplicate items
     if (idsToZero.length > 0) {
       promises.push(
-        supabase
-          .from('order_items')
-          .update({ quantity: 0, total: 0, notes: null })
-          .in('id', idsToZero)
-          .then(({ error }) => { if (error) throw error; })
+        Promise.resolve(
+          supabase
+            .from('order_items')
+            .update({ quantity: 0, total: 0, notes: null })
+            .in('id', idsToZero)
+        ).then(({ error }) => { if (error) throw error; })
       );
     }
 
     // Update existing items in place
     for (const { id, desired } of updateOps) {
       promises.push(
-        supabase
-          .from('order_items')
-          .update({
-            menu_item_name: desired.menu_item_name,
-            variant_id: desired.variant_id,
-            variant_name: desired.variant_name,
-            quantity: desired.quantity,
-            unit_price: desired.unit_price,
-            total: desired.total,
-            notes: desired.notes,
-          })
-          .eq('id', id)
-          .then(({ error }) => { if (error) throw error; })
+        Promise.resolve(
+          supabase
+            .from('order_items')
+            .update({
+              menu_item_name: desired.menu_item_name,
+              variant_id: desired.variant_id,
+              variant_name: desired.variant_name,
+              quantity: desired.quantity,
+              unit_price: desired.unit_price,
+              total: desired.total,
+              notes: desired.notes,
+            })
+            .eq('id', id)
+        ).then(({ error }) => { if (error) throw error; })
       );
     }
 
     // Insert genuinely new items
     if (insertOps.length > 0) {
       promises.push(
-        supabase
-          .from('order_items')
-          .insert(insertOps)
-          .then(({ error }) => { if (error) throw error; })
+        Promise.resolve(
+          supabase
+            .from('order_items')
+            .insert(insertOps)
+        ).then(({ error }) => { if (error) throw error; })
       );
     }
 
