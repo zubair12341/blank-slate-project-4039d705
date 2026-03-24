@@ -22,6 +22,7 @@ import DailyReport from "./pages/DailyReport";
 import StaffManagement from "./pages/StaffManagement";
 import RestaurantSettings from "./pages/Settings";
 import DirectStockSales from "./pages/DirectStockSales";
+import StockReport from "./pages/StockReport";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
@@ -62,6 +63,7 @@ const App = () => (
                 <Route path="/stock" element={<StoreStock />} />
                 <Route path="/kitchen-stock" element={<KitchenStock />} />
                 <Route path="/direct-sales" element={<DirectStockSales />} />
+                <Route path="/stock-report" element={<StockReport />} />
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/online-orders" element={<OnlineOrders />} />
                 <Route path="/takeaway-orders" element={<TakeawayOrders />} />

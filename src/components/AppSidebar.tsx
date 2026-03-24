@@ -47,6 +47,7 @@ const navigation = [
   { name: 'Store Stock', href: '/store-stock', icon: Warehouse, permission: 'store-stock', showBadge: true },
   { name: 'Kitchen Stock', href: '/kitchen-stock', icon: ChefHat, permission: 'kitchen-stock', showBadge: true },
   { name: 'Direct Sales', href: '/direct-sales', icon: DollarSign, permission: 'store-stock' },
+  { name: 'Stock Report', href: '/stock-report', icon: BarChart3, permission: 'store-stock' },
   { name: 'Orders', href: '/orders', icon: FileText, permission: 'orders' },
   { name: 'Daily Costs', href: '/daily-costs', icon: Banknote, permission: 'daily-costs' },
   { name: 'Daily Report', href: '/daily-report', icon: Calendar, permission: 'reports' },
