@@ -53,6 +53,7 @@ export default function MainLayout() {
     'stock': 'store-stock',
     'kitchen-stock': 'kitchen-stock',
     'direct-sales': 'store-stock',
+    'stock-report': 'store-stock',
     'orders': 'orders',
     'daily-costs': 'daily-costs',
     'daily-report': 'reports',
