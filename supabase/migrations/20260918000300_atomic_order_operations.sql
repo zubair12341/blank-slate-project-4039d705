@@ -12,8 +12,8 @@ USING (
   OR (
     public.has_permission(auth.uid(), 'order.view_assigned')
     AND (
-      public.is_waiter_assigned_to_table(auth.uid(), table_id)
-      OR EXISTS (SELECT 1 FROM public.waiters w WHERE w.id = waiter_id AND w.user_id = auth.uid())
+      public.is_waiter_assigned_to_table(auth.uid(), table_id::uuid)
+      OR EXISTS (SELECT 1 FROM public.waiters w WHERE w.id = waiter_id::uuid AND w.user_id = auth.uid())
     )
   )
 );
@@ -27,7 +27,7 @@ WITH CHECK (
     OR (
       fulfillment_type = 'dine-in'
       AND table_id IS NOT NULL
-      AND public.is_waiter_assigned_to_table(auth.uid(), table_id)
+      AND public.is_waiter_assigned_to_table(auth.uid(), table_id::uuid)
     )
   )
 );
@@ -52,8 +52,8 @@ USING (
         OR (
           public.has_permission(auth.uid(), 'order.view_assigned')
           AND (
-            public.is_waiter_assigned_to_table(auth.uid(), o.table_id)
-            OR EXISTS (SELECT 1 FROM public.waiters w WHERE w.id = o.waiter_id AND w.user_id = auth.uid())
+            public.is_waiter_assigned_to_table(auth.uid(), o.table_id::uuid)
+            OR EXISTS (SELECT 1 FROM public.waiters w WHERE w.id = o.waiter_id::uuid AND w.user_id = auth.uid())
           )
         )
       )
@@ -69,7 +69,7 @@ WITH CHECK (
     WHERE o.id = order_id
       AND (
         public.has_permission(auth.uid(), 'order.view_all')
-        OR public.is_waiter_assigned_to_table(auth.uid(), o.table_id)
+        OR public.is_waiter_assigned_to_table(auth.uid(), o.table_id::uuid)
       )
   )
 );
@@ -231,7 +231,7 @@ BEGIN
          ELSE 'online' END,
     p_fulfillment_type, 'open', 'unpaid',
     v_subtotal, v_tax, v_discount, p_discount_type, COALESCE(p_discount_value,0), p_discount_reason, v_total,
-    p_payment_method, p_customer_name, p_table_id, v_table_number, v_waiter_id, v_waiter_name,
+    p_payment_method, p_customer_name, p_table_id::text, v_table_number, v_waiter_id::text, v_waiter_name,
     v_user, now(), p_source_device, p_order_channel
   ) RETURNING id INTO v_order_id;
 
@@ -370,8 +370,8 @@ BEGIN
   END IF;
   IF public.has_permission(v_user,'order.view_assigned')
      AND NOT (
-       public.is_waiter_assigned_to_table(v_user,v_order.table_id)
-       OR EXISTS(SELECT 1 FROM public.waiters w WHERE w.id=v_order.waiter_id AND w.user_id=v_user)
+       public.is_waiter_assigned_to_table(v_user,v_order.table_id::uuid)
+       OR EXISTS(SELECT 1 FROM public.waiters w WHERE w.id=v_order.waiter_id::uuid AND w.user_id=v_user)
      ) THEN
     RAISE EXCEPTION 'Waiter is not authorized for this order';
   END IF;
@@ -494,7 +494,7 @@ BEGIN
   INSERT INTO public.item_less_events(order_id,order_item_id,quantity_less,unit_price,amount_affected,
     reason_code,reason_details,performed_by,original_waiter_id,inventory_disposition)
   VALUES(v_item.order_id,p_order_item_id,p_quantity_less,v_item.unit_price,v_amount,p_reason_code,
-    NULLIF(trim(p_reason_details),''),v_user,v_order.waiter_id,p_inventory_disposition)
+    NULLIF(trim(p_reason_details),''),v_user,v_order.waiter_id::uuid,p_inventory_disposition)
   RETURNING id INTO v_event_id;
 
   INSERT INTO public.order_activity_log(order_id,event_type,actor_user_id,actor_role,source_device,entity_type,entity_id,before_data,after_data,details)
