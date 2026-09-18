@@ -121,3 +121,59 @@ export async function createItemLess(input: {
     amount_affected: number;
   };
 }
+
+
+export async function transitionOrderStatus(input: {
+  orderId: string;
+  newStatus: string;
+  expectedVersion?: number;
+  sourceDevice?: OrderSourceDevice;
+}) {
+  const { data, error } = await rpc('transition_order_status', {
+    p_order_id: input.orderId,
+    p_new_status: input.newStatus,
+    p_expected_version: input.expectedVersion ?? null,
+    p_source_device: input.sourceDevice ?? 'POS',
+  });
+  if (error) throw error;
+  return data as { order_id: string; operational_status: string };
+}
+
+export async function markKotPrinted(input: {
+  kotId: string;
+  isReprint?: boolean;
+  sourceDevice?: OrderSourceDevice;
+}) {
+  const { data, error } = await rpc('mark_kot_printed', {
+    p_kot_id: input.kotId,
+    p_is_reprint: input.isReprint ?? false,
+    p_source_device: input.sourceDevice ?? 'POS',
+  });
+  if (error) throw error;
+  return data as { kot_id: string; printed: boolean; reprint: boolean };
+}
+
+export async function recordOrderPayment(input: {
+  orderId: string;
+  amount: number;
+  paymentMethod: 'cash' | 'card' | 'mobile';
+  reference?: string;
+  idempotencyKey?: string;
+  sourceDevice?: OrderSourceDevice;
+}) {
+  const { data, error } = await rpc('record_order_payment', {
+    p_order_id: input.orderId,
+    p_amount: input.amount,
+    p_payment_method: input.paymentMethod,
+    p_reference: input.reference ?? null,
+    p_idempotency_key: input.idempotencyKey ?? makeOrderIdempotencyKey(),
+    p_source_device: input.sourceDevice ?? 'POS',
+  });
+  if (error) throw error;
+  return data as {
+    payment_id: string;
+    duplicate: boolean;
+    total_paid?: number;
+    payment_status: string;
+  };
+}
