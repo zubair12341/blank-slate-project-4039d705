@@ -24,8 +24,11 @@ WITH CHECK (
   public.has_permission(auth.uid(), 'order.create')
   AND (
     NOT public.has_permission(auth.uid(), 'order.view_assigned')
-    OR table_id IS NULL
-    OR public.is_waiter_assigned_to_table(auth.uid(), table_id)
+    OR (
+      fulfillment_type = 'dine-in'
+      AND table_id IS NOT NULL
+      AND public.is_waiter_assigned_to_table(auth.uid(), table_id)
+    )
   )
 );
 
