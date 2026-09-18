@@ -292,6 +292,42 @@ BEGIN
 END;
 $$;
 
+-- Recalculate financial totals from current billable item rows.
+CREATE OR REPLACE FUNCTION public.recalculate_order_totals(p_order_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $
+DECLARE
+  v_subtotal numeric := 0;
+  v_tax_rate numeric := 0;
+  v_gst_enabled boolean := true;
+  v_tax numeric := 0;
+  v_discount_type text;
+  v_discount_value numeric := 0;
+  v_discount numeric := 0;
+BEGIN
+  SELECT COALESCE(SUM(total),0) INTO v_subtotal FROM public.order_items WHERE order_id=p_order_id;
+  SELECT discount_type, COALESCE(discount_value,0) INTO v_discount_type, v_discount_value
+    FROM public.orders WHERE id=p_order_id;
+  SELECT COALESCE(tax_rate,0), COALESCE(invoice_gst_enabled,true)
+    INTO v_tax_rate, v_gst_enabled
+    FROM public.restaurant_settings ORDER BY created_at LIMIT 1;
+  IF v_gst_enabled THEN v_tax:=v_subtotal*v_tax_rate/100; END IF;
+  IF v_discount_type='percentage' THEN
+    v_discount:=v_subtotal*v_discount_value/100;
+  ELSE
+    v_discount:=v_discount_value;
+  END IF;
+  v_discount:=LEAST(v_discount,v_subtotal+v_tax);
+  UPDATE public.orders
+     SET subtotal=v_subtotal, tax=v_tax, discount=v_discount,
+         total=GREATEST(0,v_subtotal+v_tax-v_discount)
+   WHERE id=p_order_id;
+END;
+$;
+
 -- Atomic add-items operation. It never edits/removes previously submitted rows.
 CREATE OR REPLACE FUNCTION public.add_order_items_batch(
   p_order_id uuid,
@@ -315,6 +351,10 @@ DECLARE
   v_qty numeric;
   v_price numeric;
   v_name text;
+  v_recipe jsonb;
+  v_recipe_item jsonb;
+  v_ing_id uuid;
+  v_ing_qty numeric;
   v_added numeric := 0;
 BEGIN
   IF v_user IS NULL OR NOT public.has_permission(v_user,'order.add_items') THEN
@@ -354,9 +394,9 @@ BEGIN
       SELECT * INTO v_variant FROM public.menu_item_variants
        WHERE id=(v_item->>'variant_id')::uuid AND menu_item_id=v_menu.id AND is_available=true;
       IF NOT FOUND THEN RAISE EXCEPTION 'Menu variant unavailable'; END IF;
-      v_price:=v_variant.price; v_name:=v_menu.name||' ('||v_variant.name||')';
+      v_price:=v_variant.price; v_name:=v_menu.name||' ('||v_variant.name||')'; v_recipe:=v_variant.recipe;
     ELSE
-      v_price:=v_menu.price; v_name:=v_menu.name;
+      v_price:=v_menu.price; v_name:=v_menu.name; v_recipe:=v_menu.recipe;
     END IF;
 
     INSERT INTO public.order_items(order_id,menu_item_id,menu_item_name,variant_id,variant_name,quantity,
@@ -367,12 +407,25 @@ BEGIN
       v_qty,v_qty,v_qty,0,v_price,v_price*v_qty,NULLIF(v_item->>'notes',''),v_batch_id,'added',
       CASE WHEN NULLIF(v_item->>'variant_id','') IS NULL THEN v_menu.recipe_cost ELSE v_variant.recipe_cost END);
     v_added:=v_added+(v_price*v_qty);
+
+    IF jsonb_typeof(v_recipe)='array' THEN
+      FOR v_recipe_item IN SELECT value FROM jsonb_array_elements(v_recipe)
+      LOOP
+        BEGIN
+          v_ing_id:=(v_recipe_item->>'ingredientId')::uuid;
+          v_ing_qty:=COALESCE((v_recipe_item->>'quantity')::numeric,0)*v_qty;
+          UPDATE public.ingredients
+             SET kitchen_stock=GREATEST(0,kitchen_stock-v_ing_qty), updated_at=now()
+           WHERE id=v_ing_id;
+        EXCEPTION WHEN invalid_text_representation THEN NULL;
+        END;
+      END LOOP;
+    END IF;
   END LOOP;
 
+  PERFORM public.recalculate_order_totals(p_order_id);
   UPDATE public.orders
-     SET subtotal=subtotal+v_added,
-         total=total+v_added,
-         operational_status=CASE WHEN operational_status='open' THEN 'in_progress' ELSE operational_status END
+     SET operational_status=CASE WHEN operational_status='open' THEN 'in_progress' ELSE operational_status END
    WHERE id=p_order_id;
 
   INSERT INTO public.kot_tickets(order_id,batch_id,is_additional,print_requested_by)
@@ -433,10 +486,7 @@ BEGIN
          updated_at=now()
    WHERE id=p_order_item_id;
 
-  UPDATE public.orders
-     SET subtotal=GREATEST(0,subtotal-v_amount),
-         total=GREATEST(0,total-v_amount)
-   WHERE id=v_item.order_id;
+  PERFORM public.recalculate_order_totals(v_item.order_id);
 
   INSERT INTO public.item_less_events(order_id,order_item_id,quantity_less,unit_price,amount_affected,
     reason_code,reason_details,performed_by,original_waiter_id,inventory_disposition)
@@ -454,6 +504,7 @@ BEGIN
 END;
 $$;
 
+GRANT EXECUTE ON FUNCTION public.recalculate_order_totals(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.create_order_atomic(text,text,jsonb,uuid,uuid,text,text,text,numeric,text,text,text,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.add_order_items_batch(uuid,jsonb,text,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.create_item_less(uuid,numeric,text,text,text,text) TO authenticated;
