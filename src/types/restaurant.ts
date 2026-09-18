@@ -85,9 +85,18 @@ export interface Waiter {
   name: string;
   phone: string;
   isActive: boolean;
+  userId?: string;
 }
 
-export type UserRole = 'admin' | 'manager' | 'pos_user';
+export type UserRole = 'admin' | 'manager' | 'pos_user' | 'waiter';
+
+export type FulfillmentType = 'dine-in' | 'takeaway' | 'delivery';
+export type OperationalStatus =
+  | 'open' | 'in_progress' | 'ready' | 'served' | 'picked_up'
+  | 'delivered' | 'completed' | 'cancelled' | 'refunded';
+export type PaymentStatus = 'unpaid' | 'partially_paid' | 'paid' | 'refunded' | 'partially_refunded';
+export type OrderSourceDevice = 'POS' | 'WAITER_MOBILE' | 'ADMIN' | 'ONLINE';
+export type OrderItemStatus = 'ordered' | 'added' | 'less' | 'cancelled';
 
 export interface Staff {
   id: string;
@@ -123,6 +132,12 @@ export interface Order {
   orderType: 'dine-in' | 'online' | 'takeaway';
   createdAt: Date;
   completedAt?: Date;
+  fulfillmentType?: FulfillmentType;
+  operationalStatus?: OperationalStatus;
+  paymentStatus?: PaymentStatus;
+  sourceDevice?: OrderSourceDevice;
+  orderChannel?: string;
+  version?: number;
 }
 
 export interface StockRemoval {
@@ -152,6 +167,7 @@ export interface StockSale {
 }
 
 export interface OrderItem {
+  id?: string;
   menuItemId: string;
   menuItemName: string;
   variantId?: string;
@@ -160,6 +176,12 @@ export interface OrderItem {
   unitPrice: number;
   total: number;
   notes?: string;
+  batchId?: string;
+  originalQuantity?: number;
+  lessQuantity?: number;
+  finalQuantity?: number;
+  itemStatus?: OrderItemStatus;
+  unitCostAtSale?: number;
 }
 
 export interface StockTransfer {
@@ -252,4 +274,6 @@ export const rolePermissions: Record<UserRole, string[]> = {
   admin: ['dashboard', 'pos', 'menu', 'ingredients', 'recipes', 'store_stock', 'kitchen_stock', 'orders', 'reports', 'settings', 'staff'],
   manager: ['dashboard', 'pos', 'menu', 'ingredients', 'recipes', 'store_stock', 'kitchen_stock', 'orders', 'reports'],
   pos_user: ['pos', 'orders'],
+  // Waiter gets a dedicated mobile ordering surface in Task 5; no desktop modules by default.
+  waiter: [],
 };
