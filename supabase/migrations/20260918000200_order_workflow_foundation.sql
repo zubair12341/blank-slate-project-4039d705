@@ -367,7 +367,7 @@ USING (
     SELECT 1 FROM public.orders o
     WHERE o.id = order_id
       AND public.has_permission(auth.uid(), 'order.view_assigned')
-      AND public.is_waiter_assigned_to_table(auth.uid(), o.table_id)
+      AND public.is_waiter_assigned_to_table(auth.uid(), o.table_id::uuid)
   )
 );
 
@@ -385,7 +385,7 @@ USING (
     SELECT 1 FROM public.orders o
     WHERE o.id = order_id
       AND public.has_permission(auth.uid(), 'order.view_assigned')
-      AND public.is_waiter_assigned_to_table(auth.uid(), o.table_id)
+      AND public.is_waiter_assigned_to_table(auth.uid(), o.table_id::uuid)
   )
 );
 
@@ -432,7 +432,7 @@ USING (
     SELECT 1 FROM public.orders o
     WHERE o.id = order_id
       AND public.has_permission(auth.uid(), 'order.view_assigned')
-      AND public.is_waiter_assigned_to_table(auth.uid(), o.table_id)
+      AND public.is_waiter_assigned_to_table(auth.uid(), o.table_id::uuid)
   )
 );
 
