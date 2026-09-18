@@ -301,7 +301,7 @@ RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $
+AS $$
 DECLARE
   v_subtotal numeric := 0;
   v_tax_rate numeric := 0;
@@ -329,7 +329,7 @@ BEGIN
          total=GREATEST(0,v_subtotal+v_tax-v_discount)
    WHERE id=p_order_id;
 END;
-$;
+$$;
 
 -- Atomic add-items operation. It never edits/removes previously submitted rows.
 CREATE OR REPLACE FUNCTION public.add_order_items_batch(
