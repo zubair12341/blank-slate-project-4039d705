@@ -26,8 +26,8 @@ BEGIN
 
   IF public.has_permission(v_user,'order.view_assigned') THEN
     IF NOT (
-      public.is_waiter_assigned_to_table(v_user,v_order.table_id)
-      OR EXISTS(SELECT 1 FROM public.waiters w WHERE w.id=v_order.waiter_id AND w.user_id=v_user)
+      public.is_waiter_assigned_to_table(v_user,v_order.table_id::uuid)
+      OR EXISTS(SELECT 1 FROM public.waiters w WHERE w.id=v_order.waiter_id::uuid AND w.user_id=v_user)
     ) THEN RAISE EXCEPTION 'Waiter is not authorized for this order'; END IF;
     -- Waiters may send an open order to kitchen, but cannot complete/cancel/refund it.
     IF NOT (v_order.operational_status='open' AND p_new_status='in_progress') THEN
@@ -67,7 +67,7 @@ BEGIN
 
   IF p_new_status IN ('completed','cancelled') AND v_order.table_id IS NOT NULL THEN
     UPDATE public.restaurant_tables SET status='available',current_order_id=NULL
-    WHERE id=v_order.table_id AND current_order_id=p_order_id;
+    WHERE id=v_order.table_id::uuid AND current_order_id=p_order_id;
   END IF;
 
   INSERT INTO public.order_activity_log(order_id,event_type,actor_user_id,actor_role,source_device,entity_type,entity_id,before_data,after_data)
@@ -243,7 +243,7 @@ BEGIN
   INSERT INTO public.item_less_events(order_id,order_item_id,quantity_less,unit_price,amount_affected,
     reason_code,reason_details,performed_by,original_waiter_id,inventory_disposition)
   VALUES(v_item.order_id,p_order_item_id,p_quantity_less,v_item.unit_price,v_amount,p_reason_code,
-    NULLIF(trim(p_reason_details),''),v_user,v_order.waiter_id,p_inventory_disposition)
+    NULLIF(trim(p_reason_details),''),v_user,v_order.waiter_id::uuid,p_inventory_disposition)
   RETURNING id INTO v_event_id;
 
   INSERT INTO public.order_activity_log(order_id,event_type,actor_user_id,actor_role,source_device,entity_type,entity_id,before_data,after_data,details)
