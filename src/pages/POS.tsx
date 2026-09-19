@@ -179,15 +179,8 @@ export default function POS() {
   };
 
   const handleCheckout = () => {
-    if (cart.length === 0) {
-      toast.error('Cart is empty');
-      return;
-    }
-    if (orderType === 'dine-in' && !selectedWaiterId) {
-      toast.error('Please select a waiter');
-      return;
-    }
-    setShowCheckout(true);
+    // Legacy review/checkout screen intentionally disabled. POS orders are one-click.
+    void handleCompleteOrder();
   };
 
   const handleCancelOrder = async () => {
@@ -323,7 +316,7 @@ export default function POS() {
       setCompletedOrder(null);
       handleBackToOrderType();
     } catch (error) {
-      toast.error('Failed to settle order.');
+      toast.error(error instanceof Error ? error.message : 'Failed to settle order.');
     } finally {
       setIsSettling(false);
     }
