@@ -39,7 +39,7 @@ import { cn } from '@/lib/utils';
 import { Order } from '@/types/restaurant';
 import { PasswordOTPInput } from '@/components/PasswordOTPInput';
 import { format, subHours, startOfDay, isAfter } from 'date-fns';
-import { printWithImages } from '@/hooks/usePrintWithImages';
+import { createPrintJobId, sendLocalPrintJob } from '@/services/localPrintBridge';
 
 interface InProgressOrdersProps {
   orderType: 'online' | 'takeaway';
@@ -113,14 +113,16 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
 
   const handleSettleOrder = async () => {
     if (!selectedOrder) return;
-
-    // Settle order with selected payment method
-    await settleOrder(selectedOrder.id, paymentMethod);
-
-    toast.success(`Order ${selectedOrder.orderNumber} settled successfully!`);
-    setShowSettleDialog(false);
-    setSelectedOrder(null);
-    printInvoice({ ...selectedOrder, paymentMethod });
+    const paidOrder = { ...selectedOrder, paymentMethod };
+    try {
+      await settleOrder(selectedOrder.id, paymentMethod);
+      await printInvoice(paidOrder, 'PAID');
+      toast.success(`Order ${selectedOrder.orderNumber} settled and PAID invoice printed.`);
+      setShowSettleDialog(false);
+      setSelectedOrder(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to settle order.');
+    }
   };
 
   const handleOpenCancelDialog = (order: Order) => {
@@ -149,82 +151,29 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
     setSelectedOrder(null);
   };
 
-  const printInvoice = (order: Order) => {
-    const gstEnabled = settings.invoice?.gstEnabled ?? true;
-    
-    const logoHtml = settings.invoice?.showLogo && settings.invoice?.logoUrl 
-      ? `<div style="text-align: center; margin: 0; padding: 0; line-height: 0;"><img src="${settings.invoice.logoUrl}" alt="Logo" style="display: block; margin: 0 auto; max-height: 60px; object-fit: contain;" /></div>` 
-      : '';
-    
-    const invoiceHtml = `
-      <html>
-        <head>
-          <title>Invoice - ${order.orderNumber}</title>
-          <style>
-            html, body { margin: 0 !important; padding: 0 !important; width: 72mm; }
-            body { font-family: 'Courier New', monospace; width: 72mm; max-width: 72mm; margin: 0; padding: 0; font-weight: 700; color: #000; }
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            .header { text-align: center; border-bottom: 2px dashed #000; padding: 0 0 4px 0; margin: 0 0 4px 0; }
-            .header h1 { font-size: 15px; margin: 0; font-weight: 900; }
-            .header p { font-size: 11px; margin: 2px 0 0 0; font-weight: 700; }
-            .info { margin: 4px 0; font-size: 11px; }
-            .info-row { display: flex; justify-content: space-between; margin: 2px 0; }
-            .items { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 4px 0; margin: 4px 0; }
-            .item { display: flex; justify-content: space-between; margin: 2px 0; font-size: 11px; font-weight: 700; }
-            .totals { margin: 4px 0; font-size: 11px; }
-            .total-row { display: flex; justify-content: space-between; margin: 2px 0; font-weight: 700; }
-            .grand-total { font-size: 14px; font-weight: 900; border-top: 2px solid #000; padding-top: 4px; margin-top: 4px; }
-            .footer { text-align: center; font-size: 10px; margin-top: 4px; font-weight: 700; }
-            @media print {
-              @page { size: 72mm auto !important; margin: 0 !important; padding: 0 !important; }
-              html, body { margin: 0 !important; padding: 0 !important; width: 72mm !important; }
-              body > *:first-child { margin-top: 0 !important; padding-top: 0 !important; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            ${logoHtml}
-            <h1>${settings.invoice?.title || settings.name}</h1>
-            <p>${settings.address}</p>
-            <p>Tel: ${settings.phone}</p>
-            <p>================================</p>
-            <p>Order: ${order.orderNumber}</p>
-            <p>${format(new Date(order.createdAt), 'dd/MM/yyyy HH:mm')}</p>
-          </div>
-          <div class="info">
-            <div class="info-row"><span>Type:</span> <span>${order.orderType.toUpperCase()}</span></div>
-            ${order.customerName ? `<div class="info-row"><span>Customer:</span> <span>${order.customerName}</span></div>` : ''}
-          </div>
-          <div class="items">
-            ${order.items
-              .map(
-                (item) => `
-              <div class="item">
-                <span>${item.quantity}x ${item.menuItemName}</span>
-                <span>${settings.currencySymbol} ${item.total.toLocaleString()}</span>
-              </div>
-            `
-              )
-              .join('')}
-          </div>
-          <div class="totals">
-            <div class="total-row"><span>Subtotal:</span> <span>${settings.currencySymbol} ${order.subtotal.toLocaleString()}</span></div>
-            ${gstEnabled ? `<div class="total-row"><span>GST (${settings.taxRate}%):</span> <span>${settings.currencySymbol} ${order.tax.toLocaleString()}</span></div>` : ''}
-            ${order.discount > 0 ? `<div class="total-row"><span>Discount${order.discountType === 'percentage' ? ` (${order.discountValue}%)` : ''}:</span> <span>-${settings.currencySymbol} ${order.discount.toLocaleString()}</span></div>` : ''}
-            <div class="total-row grand-total"><span>TOTAL:</span> <span>${settings.currencySymbol} ${order.total.toLocaleString()}</span></div>
-          </div>
-          <div class="footer">
-            <p>Payment: ${order.paymentMethod.toUpperCase()}</p>
-            <p>================================</p>
-            <p>${settings.invoice?.footer || 'Thank you for your order!'}</p>
-          </div>
-        </body>
-      </html>
-    `;
-
-    // Use printWithImages to wait for logo to load before printing
-    printWithImages(invoiceHtml);
+  const printInvoice = async (order: Order, billStatus: 'UNPAID' | 'PAID' = 'UNPAID') => {
+    const lines = [
+      settings.invoice?.title || settings.name,
+      settings.address,
+      `Tel: ${settings.phone}`,
+      '================================',
+      `Order: ${order.orderNumber}`,
+      `Status: ${billStatus}`,
+      format(new Date(order.createdAt), 'dd/MM/yyyy HH:mm'),
+      `Type: ${order.orderType.toUpperCase()}`,
+      order.customerName ? `Customer: ${order.customerName}` : '',
+      '--------------------------------',
+      ...order.items.map((item) => `${item.quantity}x ${item.menuItemName}  ${settings.currencySymbol} ${item.total.toLocaleString()}`),
+      '--------------------------------',
+      `Subtotal: ${settings.currencySymbol} ${order.subtotal.toLocaleString()}`,
+      order.discount > 0 ? `Discount: -${settings.currencySymbol} ${order.discount.toLocaleString()}` : '',
+      `TOTAL: ${settings.currencySymbol} ${order.total.toLocaleString()}`,
+      billStatus === 'PAID' ? `Payment: ${order.paymentMethod.toUpperCase()}` : 'Payment: UNPAID',
+      '================================',
+      settings.invoice?.footer || 'Thank you for your order!',
+      '', '',
+    ].filter(Boolean);
+    await sendLocalPrintJob({ jobId: createPrintJobId(), type: 'CUSTOMER_RECEIPT', content: lines.join('\n') });
   };
 
   const handleNewOrder = () => {
@@ -386,7 +335,7 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => printInvoice(order)}
+                    onClick={() => void printInvoice(order).catch((error) => toast.error(error instanceof Error ? error.message : 'Failed to print bill.'))}
                     className="gap-1"
                   >
                     <Printer className="h-4 w-4" />
