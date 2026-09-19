@@ -1,0 +1,28 @@
+name: POS Hotfix Validation
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [hotfix-pos-order-lifecycle]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+      - name: Test print bridge
+        run: npm run test:print-bridge
+      - name: Verify browser printing is disabled
+        run: |
+          if grep -R --include='*.ts' --include='*.tsx' -nE '\.print\(\)|window\.print\(' src; then
+            echo "Browser print call detected. POS must use local print bridge."
+            exit 1
+          fi
+      - name: Build POS
+        run: npm run build
