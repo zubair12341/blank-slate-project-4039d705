@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Search,
   Plus,
@@ -60,6 +61,8 @@ import { createPrintJobId, sendLocalPrintJob } from '@/services/localPrintBridge
 type OrderTypeSelection = 'dine-in' | 'takeaway' | 'delivery' | 'online' | null;
 
 export default function POS() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const {
     menuItems,
     menuCategories,
@@ -113,6 +116,33 @@ export default function POS() {
   const [isItemLessSaving, setIsItemLessSaving] = useState(false);
 
   const isEditingExistingOrder = !!currentEditingOrderId;
+
+  // Queue Edit links carry the order id. Hydrate the order directly instead of
+  // making the cashier choose Takeaway/Online again.
+  useEffect(() => {
+    const state = location.state as { editMode?: boolean; orderId?: string; orderType?: OrderTypeSelection } | null;
+    if (!state?.editMode || !state.orderId) return;
+    const result = loadOrderToCart(state.orderId);
+    if (!result?.order) {
+      toast.error('Order could not be loaded for editing. Refresh the queue and try again.');
+      return;
+    }
+    const order = result.order;
+    const nextType: OrderTypeSelection = state.orderType
+      || (order.fulfillmentType === 'takeaway' ? 'takeaway'
+        : order.fulfillmentType === 'delivery' ? (order.orderChannel === 'online' ? 'online' : 'delivery')
+        : order.orderType === 'online' ? 'online'
+        : 'dine-in');
+    setOrderType(nextType);
+    setSelectedTableId(order.tableId || null);
+    setCustomerName(order.customerName || '');
+    setSelectedWaiterId(result.waiterId || '');
+    setDiscountType(order.discountType || 'fixed');
+    setDiscountValue(order.discountValue || 0);
+    setDiscountReason(order.discountReason || '');
+    // Remove navigation state so refresh/back cannot replay the edit intent.
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, loadOrderToCart, navigate]);
 
   const normalizeSearchText = (value: string) =>
     value
