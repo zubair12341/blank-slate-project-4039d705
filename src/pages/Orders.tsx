@@ -40,7 +40,10 @@ export default function Orders() {
         (order.customerName?.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (order.waiterName?.toLowerCase().includes(searchQuery.toLowerCase()));
       const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
-      const matchesType = orderTypeTab === 'all' || order.orderType === orderTypeTab;
+      const matchesType = orderTypeTab === 'all' ||
+        (orderTypeTab === 'online'
+          ? order.orderChannel === 'online' || order.orderType === 'online'
+          : order.orderType === orderTypeTab);
       return matchesSearch && matchesStatus && matchesType;
     }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [orders, searchQuery, statusFilter, orderTypeTab]);
@@ -69,7 +72,9 @@ export default function Orders() {
 
   const getOrderTypeCount = (type: 'dine-in' | 'takeaway' | 'online' | 'all') => {
     if (type === 'all') return orders.length;
-    return orders.filter(o => o.orderType === type).length;
+    return orders.filter(o => type === 'online'
+      ? o.orderChannel === 'online' || o.orderType === 'online'
+      : o.orderType === type).length;
   };
 
   const handleCancelRequest = (order: Order) => {
