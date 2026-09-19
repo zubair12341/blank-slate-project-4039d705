@@ -627,7 +627,7 @@ export default function POS() {
                         } else {
                           updateCartItemQuantity(item.menuItem.id, item.quantity - 1, item.variant?.id);
                         }
-                      }
+                      }}
                     >
                       <Minus className="h-3 w-3" />
                     </Button>
