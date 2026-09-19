@@ -52,7 +52,6 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
     settings,
     settleOrder,
     cancelOrder,
-    loadOrderToCart,
   } = useRestaurant();
 
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -101,8 +100,8 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
   const formatPrice = (price: number) => `${settings.currencySymbol} ${price.toLocaleString()}`;
 
   const handleEditOrder = (order: Order) => {
-    loadOrderToCart(order.id);
-    navigate('/pos', { state: { orderType: orderType === 'online' ? 'online' : 'takeaway', editMode: true } });
+    // POS hydrates the selected order from this explicit id and opens edit mode directly.
+    navigate('/pos', { state: { orderId: order.id, orderType: orderType === 'online' ? 'online' : 'takeaway', editMode: true } });
   };
 
   const handleOpenSettleDialog = (order: Order) => {
