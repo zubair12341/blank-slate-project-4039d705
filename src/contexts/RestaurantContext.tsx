@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseData } from '@/hooks/useSupabaseData';
 import { useSupabaseActions } from '@/hooks/useSupabaseActions';
 import { addToSyncQueue, cacheTableData, getCachedData } from '@/lib/offlineDb';
+import { createWorkflowOrder, addItemsToWorkflowOrder, makeOrderIdempotencyKey } from '@/services/orderWorkflow';
 import {
   Ingredient,
   MenuItem,
@@ -144,7 +145,7 @@ interface RestaurantContextType {
     customerName?: string;
     tableId?: string;
     waiterId?: string;
-    orderType: 'dine-in' | 'online' | 'takeaway';
+    orderType: 'dine-in' | 'takeaway' | 'delivery';
     discount?: number;
     discountType?: DiscountType;
     discountValue?: number;
@@ -155,7 +156,7 @@ interface RestaurantContextType {
     customerName?: string;
     tableId?: string;
     waiterId?: string;
-    orderType: 'dine-in' | 'online' | 'takeaway';
+    orderType: 'dine-in' | 'takeaway' | 'delivery';
     discount?: number;
     discountType?: DiscountType;
     discountValue?: number;
@@ -496,17 +497,29 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     // ── Online path: normal Supabase flow ──
     if (navigator.onLine) {
       try {
-        const result = await actions.createOrder(
-          cartSnapshot,
-          orderDetails,
-          settings,
-          data.tables,
-          data.waiters,
-          data.ingredients
-        );
-        if (result) {
+        const result = await createWorkflowOrder({
+          orderNumber: `ORD-${Date.now().toString(36).toUpperCase()}`,
+          fulfillmentType: orderDetails.orderType,
+          items: cartSnapshot.map((item) => ({
+            menuItemId: item.menuItem.id,
+            variantId: item.variant?.id,
+            quantity: item.quantity,
+            notes: item.notes,
+          })),
+          tableId: orderDetails.tableId,
+          waiterId: orderDetails.waiterId,
+          customerName: orderDetails.customerName,
+          paymentMethod: orderDetails.paymentMethod,
+          discountType: orderDetails.discountType,
+          discountValue: orderDetails.discountValue,
+          discountReason: orderDetails.discountReason,
+          sourceDevice: 'POS',
+          orderChannel: 'pos',
+          idempotencyKey: makeOrderIdempotencyKey(),
+        });
+        if (result?.order_id) {
           clearCart();
-          const order = await fetchOrderWithItems(result.id);
+          const order = await fetchOrderWithItems(result.order_id);
           // Optimistically add to state so it appears immediately in all tabs
           if (order) {
             data.setOrders((prev: Order[]) => {
@@ -702,33 +715,49 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       return null;
     }
 
-    // ── Online path ──
+    // ── Online path: existing orders are append-only. Quantity reductions are handled by Item Less. ──
     if (navigator.onLine) {
       try {
-        const result = await actions.updateOrder(
-          orderId,
-          cartSnapshot,
-          orderDetails,
-          settings,
-          data.tables,
-          data.waiters
+        const existingOrder = data.orders.find((o) => o.id === orderId);
+        if (!existingOrder) throw new Error('Existing order not found');
+
+        const existingByKey = new Map(
+          existingOrder.items.map((item) => [
+            getOrderItemKey(item.menuItemId, item.variantId),
+            Number(item.finalQuantity ?? item.quantity),
+          ])
         );
-        if (result) {
-          clearCart();
-          const order = await fetchOrderWithItems(result.id);
-          // Optimistically update state
-          if (order) {
-            data.setOrders((prev: Order[]) =>
-              prev.map((o) => (o.id === order.id ? order : o))
-            );
+
+        const additions = cartSnapshot.flatMap((item) => {
+          const key = getOrderItemKey(item.menuItem.id, item.variant?.id);
+          const existingQty = existingByKey.get(key) || 0;
+          if (item.quantity < existingQty) {
+            throw new Error('Existing item quantity cannot be reduced here. Use Item Less.');
           }
-          data.refetch();
-          return order;
+          const quantity = item.quantity - existingQty;
+          return quantity > 0 ? [{
+            menuItemId: item.menuItem.id,
+            variantId: item.variant?.id,
+            quantity,
+            notes: item.notes,
+          }] : [];
+        });
+
+        if (additions.length === 0) {
+          throw new Error('No new items were added to this order.');
         }
-        return null;
+
+        await addItemsToWorkflowOrder(orderId, additions, {
+          sourceDevice: 'POS',
+          idempotencyKey: makeOrderIdempotencyKey(),
+        });
+
+        clearCart();
+        await data.refetch();
+        return await fetchOrderWithItems(orderId);
       } catch (error) {
         console.error('updateOrder online error:', error);
-        // Fall through to offline path
+        throw error;
       }
     }
 
