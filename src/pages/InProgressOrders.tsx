@@ -69,8 +69,12 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
   // Filter pending orders by type, search, and time
   const pendingOrders = useMemo(() => {
     return orders.filter((order) => {
-      // Must be pending and correct type
-      if (order.status !== 'pending' || order.orderType !== orderType) return false;
+      // Open/unpaid orders belong here. Use channel for Online and fulfillment for Takeaway.
+      const isOpen = order.paymentStatus ? order.paymentStatus !== 'paid' && order.operationalStatus !== 'completed' : order.status === 'pending';
+      const matchesType = orderType === 'online'
+        ? order.orderChannel === 'online' || order.orderType === 'online'
+        : order.fulfillmentType === 'takeaway' || order.orderType === 'takeaway';
+      if (!isOpen || !matchesType) return false;
       
       // Search filter
       if (searchQuery) {
@@ -98,7 +102,7 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
 
   const handleEditOrder = (order: Order) => {
     loadOrderToCart(order.id);
-    navigate('/pos', { state: { orderType: order.orderType, editMode: true } });
+    navigate('/pos', { state: { orderType: orderType === 'online' ? 'online' : 'takeaway', editMode: true } });
   };
 
   const handleOpenSettleDialog = (order: Order) => {
