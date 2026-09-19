@@ -556,7 +556,11 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       }
     }
 
-    // ── Offline path: save to IndexedDB + sync queue ──
+    // Task 1 workflow invariants (atomic order, KOT batch and stock deduction) cannot be
+    // safely reproduced by the legacy IndexedDB sync queue.
+    throw new Error('Orders cannot be submitted while offline yet. Your cart is preserved; reconnect and send the order.');
+
+    // ── Legacy offline path retained below for reference but intentionally unreachable ──
     try {
       const { toast } = await import('sonner');
       const orderId = crypto.randomUUID();
@@ -739,12 +743,11 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         const existingOrder = data.orders.find((o) => o.id === orderId);
         if (!existingOrder) throw new Error('Existing order not found');
 
-        const existingByKey = new Map(
-          existingOrder.items.map((item) => [
-            getOrderItemKey(item.menuItemId, item.variantId),
-            Number(item.finalQuantity ?? item.quantity),
-          ])
-        );
+        const existingByKey = existingOrder.items.reduce((totals, item) => {
+          const key = getOrderItemKey(item.menuItemId, item.variantId);
+          totals.set(key, (totals.get(key) || 0) + Number(item.finalQuantity ?? item.quantity));
+          return totals;
+        }, new Map<string, number>());
 
         const additions = cartSnapshot.flatMap((item) => {
           const key = getOrderItemKey(item.menuItem.id, item.variant?.id);
@@ -779,7 +782,9 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       }
     }
 
-    // ── Offline path ──
+    throw new Error('Existing orders cannot be changed while offline yet. Your cart is preserved; reconnect and try again.');
+
+    // ── Legacy offline path retained below for reference but intentionally unreachable ──
     try {
       const { toast } = await import('sonner');
       const table = data.tables.find((t) => t.id === orderDetails.tableId);

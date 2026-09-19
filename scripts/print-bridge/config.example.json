@@ -1,0 +1,9 @@
+{
+  "printer": "YOUR THERMAL PRINTER NAME",
+  "token": "CHANGE-THIS-LOCAL-TOKEN",
+  "allowedOrigins": [
+    "http://localhost:8080",
+    "https://YOUR-PRODUCTION-VERCEL-DOMAIN.vercel.app"
+  ],
+  "dryRun": true
+}
