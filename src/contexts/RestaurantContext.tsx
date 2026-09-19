@@ -920,7 +920,12 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     if (!order) throw new Error('Order not found. Refresh and try again.');
     if (order.paymentStatus === 'paid' || order.status === 'completed') throw new Error('This order is already paid/closed.');
 
-    await recordOrderPayment({ orderId, amount: Number(order.total), paymentMethod, idempotencyKey: makeOrderIdempotencyKey(), sourceDevice: 'POS' });
+    const amountDue = Number(order.total);
+    // A zero-total order can occur after Item Less removes every billable item.
+    // There is nothing to collect, but the operational order still needs to close.
+    if (amountDue > 0) {
+      await recordOrderPayment({ orderId, amount: amountDue, paymentMethod, idempotencyKey: makeOrderIdempotencyKey(), sourceDevice: 'POS' });
+    }
 
     let status = order.operationalStatus || 'in_progress';
     const sequence: Record<string, string | undefined> = {
