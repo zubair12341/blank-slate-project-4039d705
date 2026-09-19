@@ -182,22 +182,10 @@ const isUuid = (value?: string | null) => !!value && UUID_RE.test(value);
 const getOrderItemKey = (menuItemId: string, variantId?: string | null) =>
   `${menuItemId}::${variantId || 'base'}`;
 
-const dedupeLatestOrderItemRows = (rows: any[]) => {
-  const sortedRows = [...rows].sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
-
-  const unique = new Map<string, any>();
-  for (const row of sortedRows) {
-    if (Number(row.quantity) <= 0) continue;
-    const key = getOrderItemKey(row.menu_item_id, row.variant_id);
-    if (!unique.has(key)) {
-      unique.set(key, row);
-    }
-  }
-
-  return Array.from(unique.values());
-};
+const dedupeLatestOrderItemRows = (rows: any[]) =>
+  rows
+    .filter((row) => Number(row.final_quantity ?? row.quantity) > 0)
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
 export function RestaurantProvider({ children }: { children: React.ReactNode }) {
   const data = useSupabaseData();
@@ -232,10 +220,17 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           menuItemName: row.menu_item_name,
           variantId: row.variant_id || undefined,
           variantName: row.variant_name || undefined,
-          quantity: Number(row.quantity),
+          quantity: Number(row.final_quantity ?? row.quantity),
           unitPrice: Number(row.unit_price),
           total: Number(row.total),
           notes: row.notes ?? undefined,
+          id: row.id,
+          batchId: row.batch_id || undefined,
+          originalQuantity: Number(row.original_quantity ?? row.quantity),
+          lessQuantity: Number(row.less_quantity || 0),
+          finalQuantity: Number(row.final_quantity ?? row.quantity),
+          itemStatus: row.item_status || undefined,
+          unitCostAtSale: row.unit_cost_at_sale == null ? undefined : Number(row.unit_cost_at_sale),
         }));
 
         const order: Order = {
@@ -395,11 +390,15 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         }
 
         const cartKey = getCartKey(menuItem.id, variant?.id);
-        if (!cartMap.has(cartKey)) {
+        const existing = cartMap.get(cartKey);
+        if (existing) {
+          existing.quantity += Number(item.finalQuantity ?? item.quantity);
+          if (!existing.notes && item.notes) existing.notes = item.notes;
+        } else {
           cartMap.set(cartKey, {
             menuItem,
             variant,
-            quantity: item.quantity,
+            quantity: Number(item.finalQuantity ?? item.quantity),
             notes: item.notes,
           });
         }
