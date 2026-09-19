@@ -16,12 +16,24 @@ export interface PrintBridgeHealth {
 }
 
 const BRIDGE_URL = (import.meta.env.VITE_PRINT_BRIDGE_URL || 'http://127.0.0.1:18181').replace(/\/$/, '');
-const BRIDGE_TOKEN = import.meta.env.VITE_PRINT_BRIDGE_TOKEN || '';
+export const PRINT_BRIDGE_TOKEN_KEY = 'arabic_shinwari_print_bridge_token';
 
-const bridgeHeaders = () => ({
-  'Content-Type': 'application/json',
-  ...(BRIDGE_TOKEN ? { 'X-Print-Bridge-Token': BRIDGE_TOKEN } : {}),
-});
+export const getLocalPrintBridgeToken = () =>
+  (typeof window !== 'undefined' ? window.localStorage.getItem(PRINT_BRIDGE_TOKEN_KEY) : '') || '';
+
+export const setLocalPrintBridgeToken = (token: string) => {
+  if (typeof window === 'undefined') return;
+  if (token.trim()) window.localStorage.setItem(PRINT_BRIDGE_TOKEN_KEY, token.trim());
+  else window.localStorage.removeItem(PRINT_BRIDGE_TOKEN_KEY);
+};
+
+const bridgeHeaders = () => {
+  const token = getLocalPrintBridgeToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'X-Print-Bridge-Token': token } : {}),
+  };
+};
 
 export const createPrintJobId = () =>
   typeof crypto !== 'undefined' && crypto.randomUUID
