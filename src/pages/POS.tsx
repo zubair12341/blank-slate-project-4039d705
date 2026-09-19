@@ -55,7 +55,7 @@ import { cn } from '@/lib/utils';
 import { Order, DiscountType } from '@/types/restaurant';
 import { printWithImages, playKitchenNotificationSound } from '@/hooks/usePrintWithImages';
 
-type OrderTypeSelection = 'dine-in' | 'online' | 'takeaway' | null;
+type OrderTypeSelection = 'dine-in' | 'takeaway' | 'delivery' | null;
 
 export default function POS() {
   const {
@@ -234,7 +234,7 @@ export default function POS() {
           discountReason: discountValue > 0 ? discountReason : undefined,
         });
         if (order) {
-          toast.success('Order updated successfully!');
+          toast.success('New items added to the existing order!');
         }
       } else {
         order = await completeOrder({
@@ -256,7 +256,7 @@ export default function POS() {
       }
     } catch (error) {
       console.error('handleCompleteOrder error:', error);
-      toast.error('Failed to process order. Please try again.');
+      toast.error(error instanceof Error ? error.message : 'Failed to process order. Please try again.');
       setIsPlacingOrder(false);
       return;
     }
@@ -554,14 +554,14 @@ export default function POS() {
               </div>
             </button>
             <button
-              onClick={() => setOrderType('online')}
+              onClick={() => setOrderType('delivery')}
               className="flex flex-col items-center justify-center gap-3 p-6 sm:gap-4 sm:p-8 rounded-2xl border-2 border-border bg-card hover:border-primary hover:bg-primary/5 transition-all group"
             >
               <div className="p-4 rounded-full bg-blue-100 text-blue-600 group-hover:bg-blue-500 group-hover:text-white transition-colors">
                 <Wifi className="h-10 w-10" />
               </div>
               <div>
-                <h3 className="text-xl font-semibold">Online</h3>
+                <h3 className="text-xl font-semibold">Delivery</h3>
                 <p className="text-sm text-muted-foreground">Online delivery orders</p>
               </div>
             </button>
@@ -771,7 +771,7 @@ export default function POS() {
             Kitchen
           </Button>
           <Button className="flex-1" onClick={handleCheckout} disabled={cart.length === 0}>
-            {isEditingExistingOrder ? 'Update Order' : 'Checkout'}
+            {isEditingExistingOrder ? 'Add Items' : 'Send Order'}
           </Button>
         </div>
       </div>
@@ -825,12 +825,12 @@ export default function POS() {
                 className={cn(
                   'px-3 py-1 rounded-full text-sm font-medium',
                   orderType === 'dine-in' && 'bg-orange-100 text-orange-700',
-                  orderType === 'online' && 'bg-blue-100 text-blue-700',
+                  orderType === 'delivery' && 'bg-blue-100 text-blue-700',
                   orderType === 'takeaway' && 'bg-green-100 text-green-700'
                 )}
               >
                 {orderType === 'dine-in' && `Dine-In - Table ${tables.find((t) => t.id === selectedTableId)?.number}`}
-                {orderType === 'online' && 'Online Order'}
+                {orderType === 'delivery' && 'Delivery Order'}
                 {orderType === 'takeaway' && 'Take-Away'}
               </span>
               {isEditingExistingOrder && (
@@ -1019,7 +1019,7 @@ export default function POS() {
       <Dialog open={showCheckout} onOpenChange={setShowCheckout}>
         <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{isEditingExistingOrder ? 'Update Order' : 'Complete Order'}</DialogTitle>
+            <DialogTitle>{isEditingExistingOrder ? 'Add Items to Order' : 'Review & Send Order'}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-6 py-4">
@@ -1097,45 +1097,8 @@ export default function POS() {
               )}
             </div>
 
-            {/* Payment Method */}
-            <div className="space-y-3">
-              <Label>Payment Method</Label>
-              <RadioGroup
-                value={paymentMethod}
-                onValueChange={(value: 'cash' | 'card' | 'mobile') => setPaymentMethod(value)}
-                className="grid grid-cols-3 gap-2"
-              >
-                <Label
-                  className={cn(
-                    'flex flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 cursor-pointer transition-all',
-                    paymentMethod === 'cash' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
-                  )}
-                >
-                  <RadioGroupItem value="cash" className="sr-only" />
-                  <Banknote className="h-6 w-6" />
-                  <span className="text-sm font-medium">Cash</span>
-                </Label>
-                <Label
-                  className={cn(
-                    'flex flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 cursor-pointer transition-all',
-                    paymentMethod === 'card' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
-                  )}
-                >
-                  <RadioGroupItem value="card" className="sr-only" />
-                  <CreditCard className="h-6 w-6" />
-                  <span className="text-sm font-medium">Card</span>
-                </Label>
-                <Label
-                  className={cn(
-                    'flex flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 cursor-pointer transition-all',
-                    paymentMethod === 'mobile' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
-                  )}
-                >
-                  <RadioGroupItem value="mobile" className="sr-only" />
-                  <Smartphone className="h-6 w-6" />
-                  <span className="text-sm font-medium">JazzCash</span>
-                </Label>
-              </RadioGroup>
+            <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+              Payment is collected later during settlement. Sending the order now creates the kitchen batch and keeps the bill unpaid.
             </div>
 
             {/* Order Summary */}
@@ -1171,7 +1134,7 @@ export default function POS() {
               {isPlacingOrder ? (
                 <><span className="animate-spin mr-2">⏳</span> Processing...</>
               ) : (
-                <>{isEditingExistingOrder ? 'Update' : 'Place Order'} ({formatPrice(total)})</>
+                <>{isEditingExistingOrder ? 'Add New Items' : 'Send Order'} ({formatPrice(total)})</>
               )}
             </Button>
           </DialogFooter>
@@ -1306,7 +1269,7 @@ export default function POS() {
             )}
             {completedOrder?.orderType !== 'dine-in' && (
               <p className="text-sm text-muted-foreground bg-yellow-50 p-2 rounded-lg">
-                Order is pending. Go to {completedOrder?.orderType === 'online' ? 'Online Orders' : 'Takeaway Orders'} to settle.
+                Order is pending. Go to {completedOrder?.orderType === 'delivery' ? 'Delivery Orders' : 'Takeaway Orders'} to settle.
               </p>
             )}
           </div>

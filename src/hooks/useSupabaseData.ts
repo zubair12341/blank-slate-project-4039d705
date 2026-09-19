@@ -92,6 +92,7 @@ const transformWaiter = (row: any): Waiter => ({
   name: row.name,
   phone: row.phone || '',
   isActive: row.is_active,
+  userId: row.user_id || undefined,
 });
 
 const transformSettings = (row: any): RestaurantSettings => ({
@@ -136,40 +137,39 @@ const transformOrder = (row: any, items: OrderItem[]): Order => ({
   tableNumber: row.table_number,
   waiterId: row.waiter_id,
   waiterName: row.waiter_name,
-  orderType: row.order_type as 'dine-in' | 'online' | 'takeaway',
+  orderType: (row.fulfillment_type || (row.order_type === 'online' ? 'delivery' : row.order_type)) as 'dine-in' | 'takeaway' | 'delivery',
   createdAt: new Date(row.created_at),
   completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
+  fulfillmentType: row.fulfillment_type || undefined,
+  operationalStatus: row.operational_status || undefined,
+  paymentStatus: row.payment_status || undefined,
+  sourceDevice: row.source_device || undefined,
+  orderChannel: row.order_channel || undefined,
+  version: Number(row.version || 1),
 });
 
 const transformOrderItem = (row: any): OrderItem => ({
+  id: row.id,
   menuItemId: row.menu_item_id,
   menuItemName: row.menu_item_name,
   variantId: row.variant_id || undefined,
   variantName: row.variant_name || undefined,
-  quantity: Number(row.quantity),
+  quantity: Number(row.final_quantity ?? row.quantity),
   unitPrice: Number(row.unit_price),
   total: Number(row.total),
   notes: row.notes,
+  batchId: row.batch_id || undefined,
+  originalQuantity: Number(row.original_quantity ?? row.quantity),
+  lessQuantity: Number(row.less_quantity || 0),
+  finalQuantity: Number(row.final_quantity ?? row.quantity),
+  itemStatus: row.item_status || undefined,
+  unitCostAtSale: row.unit_cost_at_sale == null ? undefined : Number(row.unit_cost_at_sale),
 });
 
-const getOrderItemKey = (row: any) => `${row.menu_item_id}::${row.variant_id || 'base'}`;
-
-const dedupeLatestOrderItems = (rows: any[]) => {
-  const sortedRows = [...rows].sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
-
-  const unique = new Map<string, any>();
-  for (const row of sortedRows) {
-    if (Number(row.quantity) <= 0) continue;
-    const key = getOrderItemKey(row);
-    if (!unique.has(key)) {
-      unique.set(key, row);
-    }
-  }
-
-  return Array.from(unique.values());
-};
+const dedupeLatestOrderItems = (rows: any[]) =>
+  rows
+    .filter((row) => Number(row.final_quantity ?? row.quantity) > 0)
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
 const transformStockPurchase = (row: any): StockPurchase => ({
   id: row.id,

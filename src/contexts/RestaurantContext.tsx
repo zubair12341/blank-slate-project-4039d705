@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseData } from '@/hooks/useSupabaseData';
 import { useSupabaseActions } from '@/hooks/useSupabaseActions';
 import { addToSyncQueue, cacheTableData, getCachedData } from '@/lib/offlineDb';
+import { createWorkflowOrder, addItemsToWorkflowOrder, makeOrderIdempotencyKey } from '@/services/orderWorkflow';
 import {
   Ingredient,
   MenuItem,
@@ -144,7 +145,7 @@ interface RestaurantContextType {
     customerName?: string;
     tableId?: string;
     waiterId?: string;
-    orderType: 'dine-in' | 'online' | 'takeaway';
+    orderType: 'dine-in' | 'takeaway' | 'delivery';
     discount?: number;
     discountType?: DiscountType;
     discountValue?: number;
@@ -155,7 +156,7 @@ interface RestaurantContextType {
     customerName?: string;
     tableId?: string;
     waiterId?: string;
-    orderType: 'dine-in' | 'online' | 'takeaway';
+    orderType: 'dine-in' | 'takeaway' | 'delivery';
     discount?: number;
     discountType?: DiscountType;
     discountValue?: number;
@@ -181,22 +182,10 @@ const isUuid = (value?: string | null) => !!value && UUID_RE.test(value);
 const getOrderItemKey = (menuItemId: string, variantId?: string | null) =>
   `${menuItemId}::${variantId || 'base'}`;
 
-const dedupeLatestOrderItemRows = (rows: any[]) => {
-  const sortedRows = [...rows].sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
-
-  const unique = new Map<string, any>();
-  for (const row of sortedRows) {
-    if (Number(row.quantity) <= 0) continue;
-    const key = getOrderItemKey(row.menu_item_id, row.variant_id);
-    if (!unique.has(key)) {
-      unique.set(key, row);
-    }
-  }
-
-  return Array.from(unique.values());
-};
+const dedupeLatestOrderItemRows = (rows: any[]) =>
+  rows
+    .filter((row) => Number(row.final_quantity ?? row.quantity) > 0)
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
 export function RestaurantProvider({ children }: { children: React.ReactNode }) {
   const data = useSupabaseData();
@@ -231,10 +220,17 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           menuItemName: row.menu_item_name,
           variantId: row.variant_id || undefined,
           variantName: row.variant_name || undefined,
-          quantity: Number(row.quantity),
+          quantity: Number(row.final_quantity ?? row.quantity),
           unitPrice: Number(row.unit_price),
           total: Number(row.total),
           notes: row.notes ?? undefined,
+          id: row.id,
+          batchId: row.batch_id || undefined,
+          originalQuantity: Number(row.original_quantity ?? row.quantity),
+          lessQuantity: Number(row.less_quantity || 0),
+          finalQuantity: Number(row.final_quantity ?? row.quantity),
+          itemStatus: row.item_status || undefined,
+          unitCostAtSale: row.unit_cost_at_sale == null ? undefined : Number(row.unit_cost_at_sale),
         }));
 
         const order: Order = {
@@ -255,9 +251,15 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           tableNumber: orderRow.table_number,
           waiterId: orderRow.waiter_id,
           waiterName: orderRow.waiter_name,
-          orderType: orderRow.order_type as any,
+          orderType: (orderRow.fulfillment_type || (orderRow.order_type === 'online' ? 'delivery' : orderRow.order_type)) as any,
           createdAt: new Date(orderRow.created_at),
           completedAt: orderRow.completed_at ? new Date(orderRow.completed_at) : undefined,
+          fulfillmentType: orderRow.fulfillment_type || undefined,
+          operationalStatus: orderRow.operational_status || undefined,
+          paymentStatus: orderRow.payment_status || undefined,
+          sourceDevice: orderRow.source_device || undefined,
+          orderChannel: orderRow.order_channel || undefined,
+          version: Number(orderRow.version || 1),
         };
 
         return order;
@@ -278,10 +280,17 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         menuItemName: row.menu_item_name,
         variantId: row.variant_id || undefined,
         variantName: row.variant_name || undefined,
-        quantity: Number(row.quantity),
+        quantity: Number(row.final_quantity ?? row.quantity),
         unitPrice: Number(row.unit_price),
         total: Number(row.total),
         notes: row.notes ?? undefined,
+        id: row.id,
+        batchId: row.batch_id || undefined,
+        originalQuantity: Number(row.original_quantity ?? row.quantity),
+        lessQuantity: Number(row.less_quantity || 0),
+        finalQuantity: Number(row.final_quantity ?? row.quantity),
+        itemStatus: row.item_status || undefined,
+        unitCostAtSale: row.unit_cost_at_sale == null ? undefined : Number(row.unit_cost_at_sale),
       }));
 
       const order: Order = {
@@ -302,9 +311,15 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         tableNumber: orderRow.table_number,
         waiterId: orderRow.waiter_id,
         waiterName: orderRow.waiter_name,
-        orderType: orderRow.order_type as any,
+        orderType: (orderRow.fulfillment_type || (orderRow.order_type === 'online' ? 'delivery' : orderRow.order_type)) as any,
         createdAt: new Date(orderRow.created_at),
         completedAt: orderRow.completed_at ? new Date(orderRow.completed_at) : undefined,
+        fulfillmentType: orderRow.fulfillment_type || undefined,
+        operationalStatus: orderRow.operational_status || undefined,
+        paymentStatus: orderRow.payment_status || undefined,
+        sourceDevice: orderRow.source_device || undefined,
+        orderChannel: orderRow.order_channel || undefined,
+        version: Number(orderRow.version || 1),
       };
 
       return order;
@@ -394,11 +409,15 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         }
 
         const cartKey = getCartKey(menuItem.id, variant?.id);
-        if (!cartMap.has(cartKey)) {
+        const existing = cartMap.get(cartKey);
+        if (existing) {
+          existing.quantity += Number(item.finalQuantity ?? item.quantity);
+          if (!existing.notes && item.notes) existing.notes = item.notes;
+        } else {
           cartMap.set(cartKey, {
             menuItem,
             variant,
-            quantity: item.quantity,
+            quantity: Number(item.finalQuantity ?? item.quantity),
             notes: item.notes,
           });
         }
@@ -496,17 +515,29 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     // ── Online path: normal Supabase flow ──
     if (navigator.onLine) {
       try {
-        const result = await actions.createOrder(
-          cartSnapshot,
-          orderDetails,
-          settings,
-          data.tables,
-          data.waiters,
-          data.ingredients
-        );
-        if (result) {
+        const result = await createWorkflowOrder({
+          orderNumber: `ORD-${Date.now().toString(36).toUpperCase()}`,
+          fulfillmentType: orderDetails.orderType,
+          items: cartSnapshot.map((item) => ({
+            menuItemId: item.menuItem.id,
+            variantId: item.variant?.id,
+            quantity: item.quantity,
+            notes: item.notes,
+          })),
+          tableId: orderDetails.tableId,
+          waiterId: orderDetails.waiterId,
+          customerName: orderDetails.customerName,
+          paymentMethod: orderDetails.paymentMethod,
+          discountType: orderDetails.discountType,
+          discountValue: orderDetails.discountValue,
+          discountReason: orderDetails.discountReason,
+          sourceDevice: 'POS',
+          orderChannel: 'pos',
+          idempotencyKey: makeOrderIdempotencyKey(),
+        });
+        if (result?.order_id) {
           clearCart();
-          const order = await fetchOrderWithItems(result.id);
+          const order = await fetchOrderWithItems(result.order_id);
           // Optimistically add to state so it appears immediately in all tabs
           if (order) {
             data.setOrders((prev: Order[]) => {
@@ -702,33 +733,49 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       return null;
     }
 
-    // ── Online path ──
+    // ── Online path: existing orders are append-only. Quantity reductions are handled by Item Less. ──
     if (navigator.onLine) {
       try {
-        const result = await actions.updateOrder(
-          orderId,
-          cartSnapshot,
-          orderDetails,
-          settings,
-          data.tables,
-          data.waiters
+        const existingOrder = data.orders.find((o) => o.id === orderId);
+        if (!existingOrder) throw new Error('Existing order not found');
+
+        const existingByKey = new Map(
+          existingOrder.items.map((item) => [
+            getOrderItemKey(item.menuItemId, item.variantId),
+            Number(item.finalQuantity ?? item.quantity),
+          ])
         );
-        if (result) {
-          clearCart();
-          const order = await fetchOrderWithItems(result.id);
-          // Optimistically update state
-          if (order) {
-            data.setOrders((prev: Order[]) =>
-              prev.map((o) => (o.id === order.id ? order : o))
-            );
+
+        const additions = cartSnapshot.flatMap((item) => {
+          const key = getOrderItemKey(item.menuItem.id, item.variant?.id);
+          const existingQty = existingByKey.get(key) || 0;
+          if (item.quantity < existingQty) {
+            throw new Error('Existing item quantity cannot be reduced here. Use Item Less.');
           }
-          data.refetch();
-          return order;
+          const quantity = item.quantity - existingQty;
+          return quantity > 0 ? [{
+            menuItemId: item.menuItem.id,
+            variantId: item.variant?.id,
+            quantity,
+            notes: item.notes,
+          }] : [];
+        });
+
+        if (additions.length === 0) {
+          throw new Error('No new items were added to this order.');
         }
-        return null;
+
+        await addItemsToWorkflowOrder(orderId, additions, {
+          sourceDevice: 'POS',
+          idempotencyKey: makeOrderIdempotencyKey(),
+        });
+
+        clearCart();
+        await data.refetch();
+        return await fetchOrderWithItems(orderId);
       } catch (error) {
         console.error('updateOrder online error:', error);
-        // Fall through to offline path
+        throw error;
       }
     }
 
