@@ -764,6 +764,55 @@ export default function POS() {
 
 
 
+  // POS entry flow: never expose menu/cart before an order type (and table for dine-in) is selected.
+  if (!orderType) {
+    return (
+      <div className="h-[calc(100vh-7rem)] animate-fade-in p-4 sm:p-6">
+        <div className="mx-auto max-w-5xl">
+          <h1 className="text-2xl font-bold mb-2">New Order</h1>
+          <p className="text-muted-foreground mb-6">Choose how the customer is ordering.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Button className="h-28 text-lg flex-col gap-2" onClick={() => setOrderType('dine-in')}>
+              <Utensils className="h-7 w-7" /> Dine-In
+            </Button>
+            <Button variant="outline" className="h-28 text-lg flex-col gap-2" onClick={() => setOrderType('takeaway')}>
+              <ShoppingBag className="h-7 w-7" /> Takeaway
+            </Button>
+            <Button variant="outline" className="h-28 text-lg flex-col gap-2" onClick={() => setOrderType('delivery')}>
+              <Truck className="h-7 w-7" /> Delivery
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (orderType === 'dine-in' && !selectedTableId) {
+    return (
+      <div className="h-[calc(100vh-7rem)] animate-fade-in p-4 sm:p-6 overflow-y-auto">
+        <div className="mx-auto max-w-6xl">
+          <div className="flex items-center gap-3 mb-6">
+            <Button variant="ghost" size="icon" onClick={() => setOrderType(null)}><ArrowLeft className="h-5 w-5" /></Button>
+            <div><h1 className="text-2xl font-bold">Select Table</h1><p className="text-muted-foreground">Available and occupied tables are shown below.</p></div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
+            {tables.map((table) => (
+              <button key={table.id} onClick={() => handleTableSelect(table.id)}
+                className={cn('rounded-xl border p-5 text-left transition hover:border-primary hover:shadow-sm',
+                  table.status === 'occupied' ? 'border-orange-300 bg-orange-50' : 'bg-card')}>
+                <div className="text-xl font-bold">Table {table.number}</div>
+                <div className={cn('mt-2 text-sm font-medium', table.status === 'occupied' ? 'text-orange-700' : 'text-green-700')}>
+                  {table.status === 'occupied' ? 'Occupied — Open Order' : 'Available'}
+                </div>
+              </button>
+            ))}
+          </div>
+          {tables.length === 0 && <div className="rounded-lg border p-8 text-center text-muted-foreground">No restaurant tables are configured.</div>}
+        </div>
+      </div>
+    );
+  }
+
   // Main POS Screen
   return (
     <div className="flex flex-col h-[calc(100vh-7rem)] animate-fade-in relative">
