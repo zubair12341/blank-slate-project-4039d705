@@ -251,9 +251,15 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           tableNumber: orderRow.table_number,
           waiterId: orderRow.waiter_id,
           waiterName: orderRow.waiter_name,
-          orderType: orderRow.order_type as any,
+          orderType: (orderRow.fulfillment_type || (orderRow.order_type === 'online' ? 'delivery' : orderRow.order_type)) as any,
           createdAt: new Date(orderRow.created_at),
           completedAt: orderRow.completed_at ? new Date(orderRow.completed_at) : undefined,
+          fulfillmentType: orderRow.fulfillment_type || undefined,
+          operationalStatus: orderRow.operational_status || undefined,
+          paymentStatus: orderRow.payment_status || undefined,
+          sourceDevice: orderRow.source_device || undefined,
+          orderChannel: orderRow.order_channel || undefined,
+          version: Number(orderRow.version || 1),
         };
 
         return order;
@@ -274,10 +280,17 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         menuItemName: row.menu_item_name,
         variantId: row.variant_id || undefined,
         variantName: row.variant_name || undefined,
-        quantity: Number(row.quantity),
+        quantity: Number(row.final_quantity ?? row.quantity),
         unitPrice: Number(row.unit_price),
         total: Number(row.total),
         notes: row.notes ?? undefined,
+        id: row.id,
+        batchId: row.batch_id || undefined,
+        originalQuantity: Number(row.original_quantity ?? row.quantity),
+        lessQuantity: Number(row.less_quantity || 0),
+        finalQuantity: Number(row.final_quantity ?? row.quantity),
+        itemStatus: row.item_status || undefined,
+        unitCostAtSale: row.unit_cost_at_sale == null ? undefined : Number(row.unit_cost_at_sale),
       }));
 
       const order: Order = {
@@ -298,9 +311,15 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         tableNumber: orderRow.table_number,
         waiterId: orderRow.waiter_id,
         waiterName: orderRow.waiter_name,
-        orderType: orderRow.order_type as any,
+        orderType: (orderRow.fulfillment_type || (orderRow.order_type === 'online' ? 'delivery' : orderRow.order_type)) as any,
         createdAt: new Date(orderRow.created_at),
         completedAt: orderRow.completed_at ? new Date(orderRow.completed_at) : undefined,
+        fulfillmentType: orderRow.fulfillment_type || undefined,
+        operationalStatus: orderRow.operational_status || undefined,
+        paymentStatus: orderRow.payment_status || undefined,
+        sourceDevice: orderRow.source_device || undefined,
+        orderChannel: orderRow.order_channel || undefined,
+        version: Number(orderRow.version || 1),
       };
 
       return order;
