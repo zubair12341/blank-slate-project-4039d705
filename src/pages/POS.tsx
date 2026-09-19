@@ -234,7 +234,7 @@ export default function POS() {
           discountReason: discountValue > 0 ? discountReason : undefined,
         });
         if (order) {
-          toast.success('Order updated successfully!');
+          toast.success('New items added to the existing order!');
         }
       } else {
         order = await completeOrder({
@@ -771,7 +771,7 @@ export default function POS() {
             Kitchen
           </Button>
           <Button className="flex-1" onClick={handleCheckout} disabled={cart.length === 0}>
-            {isEditingExistingOrder ? 'Update Order' : 'Checkout'}
+            {isEditingExistingOrder ? 'Add Items' : 'Send Order'}
           </Button>
         </div>
       </div>
@@ -1019,7 +1019,7 @@ export default function POS() {
       <Dialog open={showCheckout} onOpenChange={setShowCheckout}>
         <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{isEditingExistingOrder ? 'Update Order' : 'Complete Order'}</DialogTitle>
+            <DialogTitle>{isEditingExistingOrder ? 'Add Items to Order' : 'Review & Send Order'}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-6 py-4">
@@ -1097,45 +1097,8 @@ export default function POS() {
               )}
             </div>
 
-            {/* Payment Method */}
-            <div className="space-y-3">
-              <Label>Payment Method</Label>
-              <RadioGroup
-                value={paymentMethod}
-                onValueChange={(value: 'cash' | 'card' | 'mobile') => setPaymentMethod(value)}
-                className="grid grid-cols-3 gap-2"
-              >
-                <Label
-                  className={cn(
-                    'flex flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 cursor-pointer transition-all',
-                    paymentMethod === 'cash' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
-                  )}
-                >
-                  <RadioGroupItem value="cash" className="sr-only" />
-                  <Banknote className="h-6 w-6" />
-                  <span className="text-sm font-medium">Cash</span>
-                </Label>
-                <Label
-                  className={cn(
-                    'flex flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 cursor-pointer transition-all',
-                    paymentMethod === 'card' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
-                  )}
-                >
-                  <RadioGroupItem value="card" className="sr-only" />
-                  <CreditCard className="h-6 w-6" />
-                  <span className="text-sm font-medium">Card</span>
-                </Label>
-                <Label
-                  className={cn(
-                    'flex flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 cursor-pointer transition-all',
-                    paymentMethod === 'mobile' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
-                  )}
-                >
-                  <RadioGroupItem value="mobile" className="sr-only" />
-                  <Smartphone className="h-6 w-6" />
-                  <span className="text-sm font-medium">JazzCash</span>
-                </Label>
-              </RadioGroup>
+            <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+              Payment is collected later during settlement. Sending the order now creates the kitchen batch and keeps the bill unpaid.
             </div>
 
             {/* Order Summary */}
@@ -1171,7 +1134,7 @@ export default function POS() {
               {isPlacingOrder ? (
                 <><span className="animate-spin mr-2">⏳</span> Processing...</>
               ) : (
-                <>{isEditingExistingOrder ? 'Update' : 'Place Order'} ({formatPrice(total)})</>
+                <>{isEditingExistingOrder ? 'Add New Items' : 'Send Order'} ({formatPrice(total)})</>
               )}
             </Button>
           </DialogFooter>
