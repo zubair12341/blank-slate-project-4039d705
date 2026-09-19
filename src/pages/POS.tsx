@@ -53,7 +53,8 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Order, DiscountType } from '@/types/restaurant';
-import { printWithImages, playKitchenNotificationSound } from '@/hooks/usePrintWithImages';
+import { playKitchenNotificationSound } from '@/hooks/usePrintWithImages';
+import { createPrintJobId, sendLocalPrintJob } from '@/services/localPrintBridge';
 
 type OrderTypeSelection = 'dine-in' | 'takeaway' | 'delivery' | null;
 
@@ -73,6 +74,7 @@ export default function POS() {
     completeOrder,
     updateOrder,
     loadOrderToCart,
+    getOrderById,
     cancelOrder,
     settleOrder,
   } = useRestaurant();
@@ -278,7 +280,7 @@ export default function POS() {
     if (!completedOrder || isSettling) return;
     setIsSettling(true);
     try {
-      await settleOrder(completedOrder.id, undefined, completedOrder.tableId);
+      await settleOrder(completedOrder.id, paymentMethod, completedOrder.tableId);
       toast.success('Order settled and table freed!');
       setCompletedOrder(null);
       handleBackToOrderType();
@@ -290,6 +292,10 @@ export default function POS() {
   };
 
   const handlePrintKitchenInvoice = () => {
+    if (!isOnline) {
+      toast.error('Printing and order changes require an online connection.');
+      return;
+    }
     if (cart.length === 0) {
       toast.error('Cart is empty');
       return;
@@ -407,240 +413,111 @@ export default function POS() {
     </html>`;
   };
 
-  const printKitchenInvoice = () => {
+  const buildKitchenSlipText = (
+    sectionName: string,
+    items: KitchenSlipItem[],
+    meta: { waiterName?: string; tableName?: string; customerName?: string; orderTypeName?: string }
+  ) => [
+    'ARABIC SHINWARI RESTAURANT',
+    '*** KITCHEN ORDER ***',
+    sectionName.toUpperCase(),
+    '--------------------------------',
+    `Type: ${meta.orderTypeName || '-'}`,
+    meta.tableName ? `Table: ${meta.tableName}` : '',
+    meta.waiterName ? `Waiter: ${meta.waiterName}` : '',
+    meta.customerName ? `Customer: ${meta.customerName}` : '',
+    '--------------------------------',
+    ...items.flatMap((item) => [
+      `${item.quantity} x ${item.name}`,
+      item.notes ? `  NOTE: ${item.notes}` : '',
+    ]),
+    '--------------------------------',
+    new Date().toLocaleString('en-PK'),
+    '',
+    '',
+  ].filter(Boolean).join('\n');
+
+  const printKitchenInvoice = async () => {
     if (isPrintingKitchen) return;
     setIsPrintingKitchen(true);
     const waiter = waiters.find((w) => w.id === selectedWaiterId);
     const table = tables.find((t) => t.id === selectedTableId);
-
     const meta = {
       orderTypeName: orderType?.toUpperCase() || '',
       tableName: table ? `#${table.number}` : '',
       waiterName: waiter?.name || '',
       customerName: customerName || '',
     };
-
     const groupedSections = getKitchenSlipGroups();
-
     if (groupedSections.length === 0) {
       setIsPrintingKitchen(false);
       toast.error('No kitchen items to print');
       return;
     }
 
-    const slips = groupedSections.map((group) =>
-      buildCategoryKitchenSlipHtml(group.sectionName, group.items, meta)
-    );
-
-    playKitchenNotificationSound();
-
-    let printIndex = 0;
-    const printNext = () => {
-      if (printIndex >= slips.length) {
-        setIsPrintingKitchen(false);
-        setShowKitchenInvoice(false);
-        toast.success(`${slips.length} kitchen slip(s) printed for ${groupedSections.length} section(s)!`);
-        return;
+    try {
+      playKitchenNotificationSound();
+      for (const group of groupedSections) {
+        await sendLocalPrintJob({
+          jobId: createPrintJobId(),
+          type: 'KOT',
+          content: buildKitchenSlipText(group.sectionName, group.items, meta),
+        });
       }
-      printWithImages(slips[printIndex], () => {
-        printIndex += 1;
-        setTimeout(printNext, 500);
-      });
-    };
-    printNext();
+      setShowKitchenInvoice(false);
+      toast.success(`${groupedSections.length} kitchen slip(s) sent silently to the thermal printer.`);
+    } catch (error) {
+      toast.error(error instanceof Error
+        ? `Silent print failed: ${error.message}. Start/check the Local Print Bridge in Settings → Printing.`
+        : 'Silent print failed. Check the Local Print Bridge.');
+    } finally {
+      setIsPrintingKitchen(false);
+    }
   };
 
-  const printCustomerInvoice = () => {
+  const printCustomerInvoice = async () => {
     if (!completedOrder) return;
+    const lines = [
+      settings.invoice?.title || settings.name,
+      settings.address,
+      `Tel: ${settings.phone}`,
+      '================================',
+      `Order: ${completedOrder.orderNumber}`,
+      new Date(completedOrder.createdAt).toLocaleString('en-PK'),
+      `Type: ${completedOrder.orderType.toUpperCase()}`,
+      completedOrder.tableNumber ? `Table: #${completedOrder.tableNumber}` : '',
+      completedOrder.waiterName ? `Waiter: ${completedOrder.waiterName}` : '',
+      completedOrder.customerName ? `Customer: ${completedOrder.customerName}` : '',
+      '--------------------------------',
+      ...completedOrder.items.map((item) =>
+        `${item.quantity}x ${item.menuItemName}  ${settings.currencySymbol} ${item.total.toLocaleString()}`
+      ),
+      '--------------------------------',
+      `Subtotal: ${settings.currencySymbol} ${completedOrder.subtotal.toLocaleString()}`,
+      gstEnabled ? `GST: ${settings.currencySymbol} ${completedOrder.tax.toLocaleString()}` : '',
+      completedOrder.discount > 0 ? `Discount: -${settings.currencySymbol} ${completedOrder.discount.toLocaleString()}` : '',
+      `TOTAL: ${settings.currencySymbol} ${completedOrder.total.toLocaleString()}`,
+      `Payment: ${paymentMethod.toUpperCase()}`,
+      '================================',
+      settings.invoice?.footer || 'Thank you for dining with us!',
+      '',
+      '',
+    ].filter(Boolean);
 
-    const logoHtml = settings.invoice?.showLogo && settings.invoice?.logoUrl 
-      ? `<div style="text-align: center; margin: 0; padding: 0; line-height: 0;"><img src="${settings.invoice.logoUrl}" alt="Logo" style="display: block; margin: 0 auto; max-height: 60px; object-fit: contain;" /></div>` 
-      : '';
-
-    const invoiceHtml = `
-      <html>
-        <head>
-          <title>Invoice - ${completedOrder.orderNumber}</title>
-          <style>
-            html, body { margin: 0 !important; padding: 0 !important; width: 72mm; }
-            body { font-family: 'Courier New', monospace; width: 72mm; max-width: 72mm; margin: 0; padding: 0; font-weight: 700; color: #000; }
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            .header { text-align: center; border-bottom: 2px dashed #000; padding: 0 0 4px 0; margin: 0 0 4px 0; }
-            .header h1 { font-size: 15px; margin: 0; font-weight: 900; }
-            .header p { font-size: 11px; margin: 2px 0 0 0; font-weight: 700; }
-            .info { margin: 4px 0; font-size: 11px; }
-            .info-row { display: flex; justify-content: space-between; margin: 2px 0; }
-            .items { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 4px 0; margin: 4px 0; }
-            .item { display: flex; justify-content: space-between; margin: 2px 0; font-size: 11px; font-weight: 700; }
-            .totals { margin: 4px 0; font-size: 11px; }
-            .total-row { display: flex; justify-content: space-between; margin: 2px 0; font-weight: 700; }
-            .grand-total { font-size: 14px; font-weight: 900; border-top: 2px solid #000; padding-top: 4px; margin-top: 4px; }
-            .footer { text-align: center; font-size: 10px; margin-top: 4px; font-weight: 700; }
-            @media print {
-              @page { size: 72mm auto !important; margin: 0 !important; padding: 0 !important; }
-              html, body { margin: 0 !important; padding: 0 !important; width: 72mm !important; }
-              body > *:first-child { margin-top: 0 !important; padding-top: 0 !important; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            ${logoHtml}
-            <h1>${settings.invoice?.title || settings.name}</h1>
-            <p>${settings.address}</p>
-            <p>Tel: ${settings.phone}</p>
-            <p>================================</p>
-            <p>Order: ${completedOrder.orderNumber}</p>
-            <p>${new Date(completedOrder.createdAt).toLocaleString('en-PK')}</p>
-          </div>
-          <div class="info">
-            <div class="info-row"><span>Type:</span> <span>${completedOrder.orderType.toUpperCase()}</span></div>
-            ${completedOrder.tableNumber ? `<div class="info-row"><span>Table:</span> <span>#${completedOrder.tableNumber}</span></div>` : ''}
-            ${completedOrder.waiterName ? `<div class="info-row"><span>Waiter:</span> <span>${completedOrder.waiterName}</span></div>` : ''}
-            ${completedOrder.customerName ? `<div class="info-row"><span>Customer:</span> <span>${completedOrder.customerName}</span></div>` : ''}
-          </div>
-          <div class="items">
-            ${completedOrder.items
-              .map(
-                (item) => `
-              <div class="item">
-                <span>${item.quantity}x ${item.menuItemName}</span>
-                <span>${settings.currencySymbol} ${item.total.toLocaleString()}</span>
-              </div>
-            `
-              )
-              .join('')}
-          </div>
-          <div class="totals">
-            <div class="total-row"><span>Subtotal:</span> <span>${settings.currencySymbol} ${completedOrder.subtotal.toLocaleString()}</span></div>
-            ${gstEnabled ? `<div class="total-row"><span>GST (${settings.taxRate}%):</span> <span>${settings.currencySymbol} ${completedOrder.tax.toLocaleString()}</span></div>` : ''}
-            ${completedOrder.discount > 0 ? `<div class="total-row"><span>Discount${completedOrder.discountType === 'percentage' ? ` (${completedOrder.discountValue}%)` : ''}:</span> <span>-${settings.currencySymbol} ${completedOrder.discount.toLocaleString()}</span></div>` : ''}
-            <div class="total-row grand-total"><span>TOTAL:</span> <span>${settings.currencySymbol} ${completedOrder.total.toLocaleString()}</span></div>
-          </div>
-          <div class="footer">
-            <p>Payment: ${completedOrder.paymentMethod.toUpperCase()}</p>
-            <p>================================</p>
-            <p>${settings.invoice?.footer || 'Thank you for dining with us!'}</p>
-            <p>شکریہ - Shukriya!</p>
-          </div>
-        </body>
-      </html>
-    `;
-
-    // Use printWithImages to wait for logo to load before printing
-    printWithImages(invoiceHtml);
+    try {
+      await sendLocalPrintJob({
+        jobId: createPrintJobId(),
+        type: 'CUSTOMER_RECEIPT',
+        content: lines.join('\n'),
+      });
+      toast.success('Customer bill printed silently.');
+    } catch (error) {
+      toast.error(error instanceof Error
+        ? `Silent print failed: ${error.message}. Start/check the Local Print Bridge in Settings → Printing.`
+        : 'Silent print failed. Check the Local Print Bridge.');
+    }
   };
 
-  // Order Type Selection Screen
-  if (!orderType) {
-    return (
-      <div className="flex h-[calc(100vh-7rem)] items-center justify-center animate-fade-in">
-        <div className="text-center space-y-8">
-          <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">Select Order Type</h1>
-            <p className="text-muted-foreground mt-2">Choose how you want to process this order</p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-            <button
-              onClick={() => setOrderType('dine-in')}
-              className="flex flex-col items-center justify-center gap-3 p-6 sm:gap-4 sm:p-8 rounded-2xl border-2 border-border bg-card hover:border-primary hover:bg-primary/5 transition-all group"
-            >
-              <div className="p-4 rounded-full bg-orange-100 text-orange-600 group-hover:bg-orange-500 group-hover:text-white transition-colors">
-                <UtensilsCrossed className="h-10 w-10" />
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold">Dine-In</h3>
-                <p className="text-sm text-muted-foreground">Customers eating at restaurant</p>
-              </div>
-            </button>
-            <button
-              onClick={() => setOrderType('delivery')}
-              className="flex flex-col items-center justify-center gap-3 p-6 sm:gap-4 sm:p-8 rounded-2xl border-2 border-border bg-card hover:border-primary hover:bg-primary/5 transition-all group"
-            >
-              <div className="p-4 rounded-full bg-blue-100 text-blue-600 group-hover:bg-blue-500 group-hover:text-white transition-colors">
-                <Wifi className="h-10 w-10" />
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold">Delivery</h3>
-                <p className="text-sm text-muted-foreground">Online delivery orders</p>
-              </div>
-            </button>
-            <button
-              onClick={() => setOrderType('takeaway')}
-              className="flex flex-col items-center justify-center gap-3 p-6 sm:gap-4 sm:p-8 rounded-2xl border-2 border-border bg-card hover:border-primary hover:bg-primary/5 transition-all group"
-            >
-              <div className="p-4 rounded-full bg-green-100 text-green-600 group-hover:bg-green-500 group-hover:text-white transition-colors">
-                <ShoppingBag className="h-10 w-10" />
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold">Take-Away</h3>
-                <p className="text-sm text-muted-foreground">Customer picks up order</p>
-              </div>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Table Selection for Dine-In - grouped by floor
-  if (orderType === 'dine-in' && !selectedTableId) {
-    const floors = [
-      { id: 'ground', name: 'Ground Floor', icon: '🏠' },
-      { id: 'first', name: 'First Floor', icon: '🏢' },
-      { id: 'family', name: 'Family Hall', icon: '👨‍👩‍👧‍👦' },
-    ] as const;
-
-    return (
-      <div className="space-y-6 animate-fade-in">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={handleBackToOrderType}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-display font-bold">Select Table</h1>
-            <p className="text-muted-foreground">Green = Available, Red = Occupied</p>
-          </div>
-        </div>
-
-        {floors.map((floor) => {
-          const floorTables = tables.filter((t) => t.floor === floor.id);
-          if (floorTables.length === 0) return null;
-
-          return (
-            <div key={floor.id} className="space-y-3">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                <span>{floor.icon}</span>
-                {floor.name}
-              </h2>
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                {floorTables.sort((a, b) => a.number - b.number).map((table) => (
-                  <button
-                    key={table.id}
-                    onClick={() => handleTableSelect(table.id)}
-                    className={cn(
-                      'flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all',
-                      table.status === 'available'
-                        ? 'bg-green-50 border-green-500 text-green-700 hover:bg-green-100'
-                        : 'bg-red-50 border-red-500 text-red-700 hover:bg-red-100'
-                    )}
-                  >
-                    <span className="text-xl font-bold">{table.number}</span>
-                    <span className="text-xs mt-1">{table.capacity} seats</span>
-                    <span className="text-xs font-medium mt-1">
-                      {table.status === 'available' ? 'Available' : 'Occupied'}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
-  // Cart content - reused in desktop sidebar and mobile sheet
   const cartContent = (
     <>
       {/* Cart Header */}
@@ -770,7 +647,21 @@ export default function POS() {
             <ChefHat className="h-4 w-4 mr-2" />
             Kitchen
           </Button>
-          <Button className="flex-1" onClick={handleCheckout} disabled={cart.length === 0}>
+          {isEditingExistingOrder && currentEditingOrderId && (
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => {
+                const existing = getOrderById(currentEditingOrderId);
+                if (existing) setCompletedOrder(existing);
+                else toast.error('Order details are not available yet.');
+              }}
+            >
+              <Banknote className="h-4 w-4 mr-2" />
+              Cash Bill
+            </Button>
+          )}
+          <Button className="flex-1" onClick={handleCheckout} disabled={cart.length === 0 || !isOnline}>
             {isEditingExistingOrder ? 'Add Items' : 'Send Order'}
           </Button>
         </div>
@@ -1272,6 +1163,20 @@ export default function POS() {
                 Order is pending. Go to {completedOrder?.orderType === 'delivery' ? 'Delivery Orders' : 'Takeaway Orders'} to settle.
               </p>
             )}
+          </div>
+          <div className="space-y-2">
+            <Label>Payment Method</Label>
+            <RadioGroup value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as 'cash' | 'card' | 'mobile')} className="grid grid-cols-3 gap-2">
+              <Label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3">
+                <RadioGroupItem value="cash" /> Cash
+              </Label>
+              <Label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3">
+                <RadioGroupItem value="card" /> Card
+              </Label>
+              <Label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border p-3">
+                <RadioGroupItem value="mobile" /> Mobile
+              </Label>
+            </RadioGroup>
           </div>
           <DialogFooter className="flex-col gap-2 sm:flex-col">
             <Button onClick={printCustomerInvoice} className="w-full">
