@@ -145,7 +145,7 @@ interface RestaurantContextType {
     customerName?: string;
     tableId?: string;
     waiterId?: string;
-    orderType: 'dine-in' | 'takeaway' | 'delivery';
+    orderType: 'dine-in' | 'takeaway' | 'delivery' | 'online';
     discount?: number;
     discountType?: DiscountType;
     discountValue?: number;
@@ -156,7 +156,7 @@ interface RestaurantContextType {
     customerName?: string;
     tableId?: string;
     waiterId?: string;
-    orderType: 'dine-in' | 'takeaway' | 'delivery';
+    orderType: 'dine-in' | 'takeaway' | 'delivery' | 'online';
     discount?: number;
     discountType?: DiscountType;
     discountValue?: number;
@@ -252,7 +252,9 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           tableNumber: orderRow.table_number,
           waiterId: orderRow.waiter_id,
           waiterName: orderRow.waiter_name,
-          orderType: (orderRow.fulfillment_type || (orderRow.order_type === 'online' ? 'delivery' : orderRow.order_type)) as any,
+          orderType: (orderRow.order_channel === 'online' || orderRow.order_type === 'online'
+            ? 'online'
+            : (orderRow.fulfillment_type || orderRow.order_type)) as any,
           createdAt: new Date(orderRow.created_at),
           completedAt: orderRow.completed_at ? new Date(orderRow.completed_at) : undefined,
           fulfillmentType: orderRow.fulfillment_type || undefined,
@@ -312,7 +314,9 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         tableNumber: orderRow.table_number,
         waiterId: orderRow.waiter_id,
         waiterName: orderRow.waiter_name,
-        orderType: (orderRow.fulfillment_type || (orderRow.order_type === 'online' ? 'delivery' : orderRow.order_type)) as any,
+        orderType: (orderRow.order_channel === 'online' || orderRow.order_type === 'online'
+            ? 'online'
+            : (orderRow.fulfillment_type || orderRow.order_type)) as any,
         createdAt: new Date(orderRow.created_at),
         completedAt: orderRow.completed_at ? new Date(orderRow.completed_at) : undefined,
         fulfillmentType: orderRow.fulfillment_type || undefined,
@@ -518,7 +522,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       try {
         const result = await createWorkflowOrder({
           orderNumber: `ORD-${Date.now().toString(36).toUpperCase()}`,
-          fulfillmentType: orderDetails.orderType,
+          fulfillmentType: orderDetails.orderType === 'online' ? 'delivery' : orderDetails.orderType,
           items: cartSnapshot.map((item) => ({
             menuItemId: item.menuItem.id,
             variantId: item.variant?.id,
@@ -533,7 +537,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           discountValue: orderDetails.discountValue,
           discountReason: orderDetails.discountReason,
           sourceDevice: 'POS',
-          orderChannel: 'pos',
+          orderChannel: orderDetails.orderType === 'online' ? 'online' : 'pos',
           idempotencyKey: makeOrderIdempotencyKey(),
         });
         if (result?.order_id) {

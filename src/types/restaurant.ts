@@ -129,7 +129,7 @@ export interface Order {
   tableNumber?: number;
   waiterId?: string;
   waiterName?: string;
-  orderType: 'dine-in' | 'takeaway' | 'delivery';
+  orderType: 'dine-in' | 'takeaway' | 'delivery' | 'online';
   createdAt: Date;
   completedAt?: Date;
   fulfillmentType?: FulfillmentType;
