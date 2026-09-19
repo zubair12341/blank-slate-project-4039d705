@@ -782,6 +782,9 @@ export default function POS() {
             <Button variant="outline" className="h-28 text-lg flex-col gap-2" onClick={() => setOrderType('delivery')}>
               <Truck className="h-7 w-7" /> Delivery
             </Button>
+            <Button variant="outline" className="h-28 text-lg flex-col gap-2" onClick={() => setOrderType('online')}>
+              <Wifi className="h-7 w-7" /> Online
+            </Button>
           </div>
         </div>
       </div>
