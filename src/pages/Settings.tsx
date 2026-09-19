@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Save, Building, Bell, Plus, Trash2, FileText, Receipt, Lock, Eye, EyeOff, Clock, Upload, Image, Download, Database, Loader2 } from 'lucide-react';
+import { Save, Building, Bell, Plus, Trash2, FileText, Receipt, Lock, Eye, EyeOff, Clock, Upload, Image, Download, Database, Loader2, Printer, Wifi } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useRestaurant } from '@/contexts/RestaurantContext';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { SecuritySettings } from '@/types/restaurant';
 import { PasswordOTPInput } from '@/components/PasswordOTPInput';
+import { getPrintBridgeHealth, sendBridgeTestPrint, getLocalPrintBridgeToken, setLocalPrintBridgeToken } from '@/services/localPrintBridge';
 
 export default function RestaurantSettings() {
   const {
@@ -58,6 +59,9 @@ export default function RestaurantSettings() {
   // Export state
   const [exportingSQL, setExportingSQL] = useState(false);
   const [exportingJSON, setExportingJSON] = useState(false);
+  const [printBridgeToken, setPrintBridgeTokenState] = useState(() => getLocalPrintBridgeToken());
+  const [printBridgeChecking, setPrintBridgeChecking] = useState(false);
+  const [printBridgeStatus, setPrintBridgeStatus] = useState<'unknown' | 'online' | 'offline'>('unknown');
 
   // Categories
   const [newMenuCategoryName, setNewMenuCategoryName] = useState('');
@@ -161,6 +165,26 @@ export default function RestaurantSettings() {
     toast.success('Security settings saved');
   };
 
+  const handleCheckPrintBridge = async (testPrint = false) => {
+    setPrintBridgeChecking(true);
+    setLocalPrintBridgeToken(printBridgeToken);
+    try {
+      const health = await getPrintBridgeHealth();
+      setPrintBridgeStatus('online');
+      if (testPrint) {
+        await sendBridgeTestPrint();
+        toast.success('Test print sent to local print bridge');
+      } else {
+        toast.success(`Print bridge connected${health.printer ? `: ${health.printer}` : ''}`);
+      }
+    } catch (error) {
+      setPrintBridgeStatus('offline');
+      toast.error(error instanceof Error ? error.message : 'Print bridge is not reachable');
+    } finally {
+      setPrintBridgeChecking(false);
+    }
+  };
+
   const handleAddMenuCategory = () => {
     if (!newMenuCategoryName.trim()) {
       toast.error('Please enter a category name');
@@ -195,13 +219,52 @@ export default function RestaurantSettings() {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5 max-w-2xl">
+        <TabsList className="grid w-full grid-cols-6 max-w-3xl">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="invoice">Invoice</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="categories">Categories</TabsTrigger>
-          <TabsTrigger value="notifications">Notifications</TabsTrigger>
+          <TabsTrigger value="notifications">Notifications</TabsTrigger>\n          <TabsTrigger value="printing">Printing</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="printing">
+          <Card className="section-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Printer className="h-5 w-5" />
+                Local Silent Printing
+              </CardTitle>
+              <CardDescription>Connect this POS computer to the local thermal-printer bridge.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-2 text-sm">
+                <span className={`h-2.5 w-2.5 rounded-full ${printBridgeStatus === 'online' ? 'bg-green-500' : printBridgeStatus === 'offline' ? 'bg-red-500' : 'bg-muted-foreground'}`} />
+                <span>{printBridgeStatus === 'online' ? 'Bridge connected' : printBridgeStatus === 'offline' ? 'Bridge unavailable' : 'Not checked yet'}</span>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="print-bridge-token">Local Bridge Token</Label>
+                <Input
+                  id="print-bridge-token"
+                  type="password"
+                  value={printBridgeToken}
+                  onChange={(e) => setPrintBridgeTokenState(e.target.value)}
+                  placeholder="Token from scripts/print-bridge/config.json"
+                />
+                <p className="text-xs text-muted-foreground">Stored only in this browser on this POS device.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => handleCheckPrintBridge(false)} disabled={printBridgeChecking}>
+                  <Wifi className="h-4 w-4 mr-2" />
+                  {printBridgeChecking ? 'Checking...' : 'Check Connection'}
+                </Button>
+                <Button onClick={() => handleCheckPrintBridge(true)} disabled={printBridgeChecking}>
+                  <Printer className="h-4 w-4 mr-2" />
+                  Send Test Print
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* General Settings Tab */}
         <TabsContent value="general">
