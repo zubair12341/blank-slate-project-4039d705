@@ -57,7 +57,7 @@ import { Order, DiscountType } from '@/types/restaurant';
 import { playKitchenNotificationSound } from '@/hooks/usePrintWithImages';
 import { createPrintJobId, sendLocalPrintJob } from '@/services/localPrintBridge';
 
-type OrderTypeSelection = 'dine-in' | 'takeaway' | 'delivery' | null;
+type OrderTypeSelection = 'dine-in' | 'takeaway' | 'delivery' | 'online' | null;
 
 export default function POS() {
   const {
@@ -668,7 +668,26 @@ export default function POS() {
 
       {/* Cart Summary */}
       <div className="border-t border-border p-4 space-y-4">
-        <div className="space-y-2">
+        <div className="space-y-3">
+          <div className="rounded-lg border p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="flex items-center gap-2"><Percent className="h-4 w-4" /> Discount</Label>
+              <Select value={discountType} onValueChange={(v) => setDiscountType(v as DiscountType)}>
+                <SelectTrigger className="w-32 h-8"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="fixed">Rs. Amount</SelectItem>
+                  <SelectItem value="percentage">Percent %</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-[120px_1fr] gap-2">
+              <Input type="number" min={0} max={discountType === 'percentage' ? 100 : undefined}
+                value={discountValue || ''} placeholder={discountType === 'percentage' ? '0-100' : 'Amount'}
+                onChange={(e) => setDiscountValue(Math.max(0, discountType === 'percentage' ? Math.min(100, Number(e.target.value) || 0) : Number(e.target.value) || 0))} />
+              <Input value={discountReason} placeholder="Discount reason"
+                onChange={(e) => setDiscountReason(e.target.value)} />
+            </div>
+          </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Subtotal</span>
             <span>{formatPrice(subtotal)}</span>
@@ -1253,7 +1272,7 @@ export default function POS() {
             )}
             {completedOrder?.orderType !== 'dine-in' && (
               <p className="text-sm text-muted-foreground bg-yellow-50 p-2 rounded-lg">
-                Order is pending. Go to {completedOrder?.orderType === 'delivery' ? 'Delivery Orders' : 'Takeaway Orders'} to settle.
+                This order is unpaid. Choose the payment method below to settle and print the PAID customer invoice.
               </p>
             )}
           </div>
@@ -1276,7 +1295,7 @@ export default function POS() {
               <Printer className="h-4 w-4 mr-2" />
               Print Unpaid Bill
             </Button>
-            {completedOrder?.orderType === 'dine-in' ? (
+            {completedOrder ? (
               <div className="flex gap-2 w-full">
                 <Button
                   variant="outline"
@@ -1292,18 +1311,7 @@ export default function POS() {
                   {isSettling ? 'Processing...' : 'Process Payment & Close'}
                 </Button>
               </div>
-            ) : (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setCompletedOrder(null);
-                  handleBackToOrderType();
-                }}
-                className="w-full"
-              >
-                New Order
-              </Button>
-            )}
+            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>
