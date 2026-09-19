@@ -30,6 +30,8 @@ function isAllowedOrigin(origin) {
   return (config.allowedOrigins || []).includes(origin);
 }
 function authorized(req) {
+  // Live printing must never expose an unauthenticated localhost print endpoint.
+  if (!config.dryRun && !config.token) return false;
   if (!config.token) return true;
   return req.headers['x-print-bridge-token'] === config.token;
 }
@@ -38,6 +40,11 @@ function pruneJobs() {
   for (const [id, at] of recentJobs) if (at < cutoff) recentJobs.delete(id);
 }
 function printText(content, printer) {
+  // This bridge is the ONLY production print path. It submits directly to the
+  // operating-system spooler and never invokes browser window.print().
+  if (!config.dryRun && !config.token) {
+    return Promise.reject(new Error('Live printing requires a configured print bridge token'));
+  }
   if (config.dryRun) {
     process.stdout.write('\n--- DRY RUN PRINT ---\n' + content + '\n--- END PRINT ---\n');
     return Promise.resolve();
