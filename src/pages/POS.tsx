@@ -12,6 +12,7 @@ import {
   ChefHat,
   UtensilsCrossed,
   ShoppingBag,
+  Truck,
   Wifi,
   WifiOff,
   ArrowLeft,
@@ -773,7 +774,7 @@ export default function POS() {
           <p className="text-muted-foreground mb-6">Choose how the customer is ordering.</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Button className="h-28 text-lg flex-col gap-2" onClick={() => setOrderType('dine-in')}>
-              <Utensils className="h-7 w-7" /> Dine-In
+              <UtensilsCrossed className="h-7 w-7" /> Dine-In
             </Button>
             <Button variant="outline" className="h-28 text-lg flex-col gap-2" onClick={() => setOrderType('takeaway')}>
               <ShoppingBag className="h-7 w-7" /> Takeaway
