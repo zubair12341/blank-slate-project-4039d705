@@ -653,7 +653,7 @@ export default function POS() {
                             setItemLessQty(Number(row.finalQuantity ?? row.quantity));
                           } else toast.error('Saved item row not found. Refresh the order.');
                         } else removeFromCart(item.menuItem.id, item.variant?.id);
-                      }
+                      }}
                     >
                       <X className="h-4 w-4" />
                     </Button>
