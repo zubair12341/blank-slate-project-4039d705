@@ -711,12 +711,37 @@ export default function POS() {
             <>
               <Button
                 variant="outline"
-                onClick={() => {
+                onClick={async () => {
                   const existing = getOrderById(currentEditingOrderId);
-                  if (existing) {
-                    setCompletedOrder(existing);
-                    setTimeout(() => void printCustomerInvoice('UNPAID'), 0);
-                  } else toast.error('Order details are not available yet.');
+                  if (!existing) {
+                    toast.error('Order details are not available yet.');
+                    return;
+                  }
+                  const lines = [
+                    settings.invoice?.title || settings.name,
+                    settings.address,
+                    `Tel: ${settings.phone}`,
+                    '================================',
+                    `Order: ${existing.orderNumber}`,
+                    'Status: UNPAID',
+                    `Type: ${existing.orderType.toUpperCase()}`,
+                    existing.tableNumber ? `Table: #${existing.tableNumber}` : '',
+                    existing.waiterName ? `Waiter: ${existing.waiterName}` : '',
+                    '--------------------------------',
+                    ...existing.items.map((item) => `${item.quantity}x ${item.menuItemName}  ${settings.currencySymbol} ${item.total.toLocaleString()}`),
+                    '--------------------------------',
+                    `TOTAL: ${settings.currencySymbol} ${existing.total.toLocaleString()}`,
+                    'Payment: UNPAID',
+                    '================================',
+                    settings.invoice?.footer || 'Thank you for dining with us!',
+                    '', '',
+                  ].filter(Boolean);
+                  try {
+                    await sendLocalPrintJob({ jobId: createPrintJobId(), type: 'CUSTOMER_RECEIPT', content: lines.join('\n') });
+                    toast.success('Unpaid bill printed silently.');
+                  } catch (error) {
+                    toast.error(error instanceof Error ? error.message : 'Failed to print unpaid bill.');
+                  }
                 }}
               >
                 <Printer className="h-4 w-4 mr-2" />
