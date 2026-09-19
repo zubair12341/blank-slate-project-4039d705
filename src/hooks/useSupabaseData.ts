@@ -137,7 +137,9 @@ const transformOrder = (row: any, items: OrderItem[]): Order => ({
   tableNumber: row.table_number,
   waiterId: row.waiter_id,
   waiterName: row.waiter_name,
-  orderType: (row.fulfillment_type || (row.order_type === 'online' ? 'delivery' : row.order_type)) as 'dine-in' | 'takeaway' | 'delivery',
+  orderType: (row.order_channel === 'online' || row.order_type === 'online'
+    ? 'online'
+    : (row.fulfillment_type || row.order_type)) as 'dine-in' | 'takeaway' | 'delivery' | 'online',
   createdAt: new Date(row.created_at),
   completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
   fulfillmentType: row.fulfillment_type || undefined,
