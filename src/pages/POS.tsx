@@ -265,12 +265,38 @@ export default function POS() {
 
     setIsPlacingOrder(false);
     if (order) {
-      setCompletedOrder(order);
+      const sourceSnapshot = [...cart];
       setShowCheckout(false);
+
+      // Send the KOT immediately. The order is already safely stored, so a printer
+      // problem must never hold up the cashier or create a duplicate order.
+      try {
+        let printSnapshot = sourceSnapshot;
+        if (isEditingExistingOrder && currentEditingOrderId) {
+          const existing = getOrderById(currentEditingOrderId);
+          if (existing) {
+            const previous = new Map<string, number>();
+            existing.items.forEach((item) => {
+              const key = `${item.menuItemId}::${item.variantId || 'base'}`;
+              previous.set(key, (previous.get(key) || 0) + Number(item.finalQuantity ?? item.quantity));
+            });
+            printSnapshot = sourceSnapshot.flatMap((item) => {
+              const key = `${item.menuItem.id}::${item.variant?.id || 'base'}`;
+              const added = item.quantity - (previous.get(key) || 0);
+              return added > 0 ? [{ ...item, quantity: added }] : [];
+            });
+          }
+        }
+        if (printSnapshot.length > 0) await sendKitchenGroupsSilently(printSnapshot);
+      } catch (printError) {
+        toast.error('Order saved, but KOT did not print. Check Settings → Printing and use Kitchen to retry.');
+      }
+
       setCustomerName('');
       setDiscountType('fixed');
       setDiscountValue(0);
       setDiscountReason('');
+      handleBackToOrderType();
     } else {
       toast.error('Failed to complete order. Please try again.');
     }
@@ -300,7 +326,7 @@ export default function POS() {
       toast.error('Cart is empty');
       return;
     }
-    setShowKitchenInvoice(true);
+    void printKitchenInvoice();
   };
 
   type KitchenSlipItem = { name: string; quantity: number; notes?: string };
@@ -323,10 +349,10 @@ export default function POS() {
     };
   };
 
-  const getKitchenSlipGroups = () => {
+  const getKitchenSlipGroups = (sourceCart = cart) => {
     const groupedBySection = new Map<string, { sectionName: string; items: KitchenSlipItem[] }>();
 
-    cart.forEach((item) => {
+    sourceCart.forEach((item) => {
       const { sectionKey, sectionName } = resolveKitchenSection(item.menuItem.categoryId);
       const displayName = item.variant
         ? `${item.menuItem.name} (${item.variant.name})`
@@ -437,9 +463,7 @@ export default function POS() {
     '',
   ].filter(Boolean).join('\n');
 
-  const printKitchenInvoice = async () => {
-    if (isPrintingKitchen) return;
-    setIsPrintingKitchen(true);
+  const sendKitchenGroupsSilently = async (sourceCart = cart) => {
     const waiter = waiters.find((w) => w.id === selectedWaiterId);
     const table = tables.find((t) => t.id === selectedTableId);
     const meta = {
@@ -448,28 +472,29 @@ export default function POS() {
       waiterName: waiter?.name || '',
       customerName: customerName || '',
     };
-    const groupedSections = getKitchenSlipGroups();
-    if (groupedSections.length === 0) {
-      setIsPrintingKitchen(false);
-      toast.error('No kitchen items to print');
-      return;
-    }
+    const groupedSections = getKitchenSlipGroups(sourceCart);
+    if (groupedSections.length === 0) return;
 
+    playKitchenNotificationSound();
+    for (const group of groupedSections) {
+      await sendLocalPrintJob({
+        jobId: createPrintJobId(),
+        type: 'KOT',
+        content: buildKitchenSlipText(group.sectionName, group.items, meta),
+      });
+    }
+  };
+
+  const printKitchenInvoice = async () => {
+    if (isPrintingKitchen) return;
+    setIsPrintingKitchen(true);
     try {
-      playKitchenNotificationSound();
-      for (const group of groupedSections) {
-        await sendLocalPrintJob({
-          jobId: createPrintJobId(),
-          type: 'KOT',
-          content: buildKitchenSlipText(group.sectionName, group.items, meta),
-        });
-      }
-      setShowKitchenInvoice(false);
-      toast.success(`${groupedSections.length} kitchen slip(s) sent silently to the thermal printer.`);
+      await sendKitchenGroupsSilently(cart);
+      toast.success('Kitchen order sent silently to the thermal printer.');
     } catch (error) {
       toast.error(error instanceof Error
-        ? `Silent print failed: ${error.message}. Start/check the Local Print Bridge in Settings → Printing.`
-        : 'Silent print failed. Check the Local Print Bridge.');
+        ? `Silent print failed: ${error.message}. Check Settings → Printing.`
+        : 'Silent print failed. Check Settings → Printing.');
     } finally {
       setIsPrintingKitchen(false);
     }
@@ -658,11 +683,11 @@ export default function POS() {
               }}
             >
               <Banknote className="h-4 w-4 mr-2" />
-              Cash Bill
+              Payment / Close
             </Button>
           )}
-          <Button className="flex-1" onClick={handleCheckout} disabled={cart.length === 0 || !isOnline}>
-            {isEditingExistingOrder ? 'Add Items' : 'Send Order'}
+          <Button className="flex-1" onClick={handleCompleteOrder} disabled={cart.length === 0 || !isOnline || isPlacingOrder}>
+            {isPlacingOrder ? 'Sending...' : isEditingExistingOrder ? 'Add Items' : 'Place Order'}
           </Button>
         </div>
       </div>
@@ -1081,65 +1106,12 @@ export default function POS() {
         </DialogContent>
       </Dialog>
 
-      {/* Kitchen Invoice Dialog */}
-      <Dialog open={showKitchenInvoice} onOpenChange={setShowKitchenInvoice}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Kitchen Invoice Preview</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4 font-mono text-sm">
-            <div className="text-center border-b-2 border-dashed pb-3">
-              <p className="text-lg font-bold">🍳 KITCHEN ORDER</p>
-              <p className="text-xs">{settings.name}</p>
-              <p className="text-xs">{new Date().toLocaleString('en-PK')}</p>
-            </div>
-            <div className="space-y-1">
-              <p>
-                <strong>Type:</strong> {orderType?.toUpperCase()}
-              </p>
-              {selectedTableId && (
-                <p>
-                  <strong>Table:</strong> #{tables.find((t) => t.id === selectedTableId)?.number}
-                </p>
-              )}
-              {selectedWaiterId && (
-                <p>
-                  <strong>Waiter:</strong> {waiters.find((w) => w.id === selectedWaiterId)?.name}
-                </p>
-              )}
-            </div>
-            <div className="border-t border-dashed pt-3 space-y-3">
-              {getKitchenSlipGroups().map((group) => (
-                <div key={group.sectionKey} className="space-y-1">
-                  <p className="text-xs font-bold uppercase tracking-wide">{group.sectionName}</p>
-                  {group.items.map((item, index) => (
-                    <div key={`${group.sectionKey}-${item.name}-${index}`} className="flex justify-between">
-                      <span>{item.name}</span>
-                      <span className="font-bold">x{item.quantity}</span>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowKitchenInvoice(false)}>
-              Cancel
-            </Button>
-            <Button onClick={printKitchenInvoice} disabled={isPrintingKitchen}>
-              <Printer className="h-4 w-4 mr-2" />
-              {isPrintingKitchen ? 'Printing...' : 'Print'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Order Completed Dialog */}
       <Dialog open={!!completedOrder} onOpenChange={() => setCompletedOrder(null)}>
         <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-center">
-              {completedOrder?.orderType === 'dine-in' ? 'Order Placed!' : 'Order Placed!'}
+              {isEditingExistingOrder ? 'Payment & Close Table' : 'Order'}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4 text-center">
@@ -1196,7 +1168,7 @@ export default function POS() {
                   New Order
                 </Button>
                 <Button variant="default" onClick={handleSettleAndClose} disabled={isSettling} className="flex-1">
-                  {isSettling ? 'Settling...' : 'Settle & Close Table'}
+                  {isSettling ? 'Processing...' : 'Process Payment & Close'}
                 </Button>
               </div>
             ) : (
