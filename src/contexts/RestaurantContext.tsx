@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseData } from '@/hooks/useSupabaseData';
 import { useSupabaseActions } from '@/hooks/useSupabaseActions';
 import { addToSyncQueue, cacheTableData, getCachedData } from '@/lib/offlineDb';
-import { createWorkflowOrder, addItemsToWorkflowOrder, makeOrderIdempotencyKey } from '@/services/orderWorkflow';
+import { createWorkflowOrder, addItemsToWorkflowOrder, makeOrderIdempotencyKey, recordOrderPayment, transitionOrderStatus, createItemLess, type ItemLessReason } from '@/services/orderWorkflow';
 import {
   Ingredient,
   MenuItem,
@@ -163,6 +163,7 @@ interface RestaurantContextType {
     discountReason?: string;
   }) => Promise<Order | null>;
   settleOrder: (orderId: string, paymentMethod?: 'cash' | 'card' | 'mobile', tableId?: string) => Promise<void>;
+  itemLess: (orderItemId: string, quantity: number, reason: ItemLessReason, details?: string, disposition?: 'not_prepared' | 'waste' | 'returned') => Promise<void>;
   cancelOrder: (orderId: string) => Promise<void>;
   getTableOrder: (tableId: string) => Order | undefined;
   
@@ -909,111 +910,55 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     }
   }, [cart, settings, data.tables, data.waiters, actions, clearCart, data.refetch, fetchOrderWithItems]);
   
-  const settleOrderAction = useCallback(async (orderId: string, paymentMethod?: 'cash' | 'card' | 'mobile', explicitTableId?: string) => {
-    // ── Online path ──
-    if (navigator.onLine) {
-      try {
-        const order = data.orders.find((o) => o.id === orderId);
-        const safeTableId = explicitTableId || order?.tableId || undefined;
-        await actions.settleOrder(orderId, safeTableId, paymentMethod);
-        // Optimistically update state
-        data.setOrders((prev: Order[]) =>
-          prev.map((o) =>
-            o.id === orderId
-              ? { ...o, status: 'completed' as const, completedAt: new Date(), paymentMethod: paymentMethod || o.paymentMethod }
-              : o
-          )
-        );
-        if (safeTableId && isUuid(safeTableId)) {
-          data.setTables((prev: Table[]) =>
-            prev.map((t) =>
-              t.id === safeTableId
-                ? { ...t, status: 'available' as const, currentOrderId: undefined }
-                : t
-            )
-          );
-        }
-        data.refetch();
-        return;
-      } catch (error) {
-        console.error('settleOrder online error:', error);
-        // Fall through to offline path
-      }
+  const settleOrderAction = useCallback(async (orderId: string, paymentMethod: 'cash' | 'card' | 'mobile' = 'cash', explicitTableId?: string) => {
+    if (!navigator.onLine) throw new Error('Payment requires an online connection.');
+    const order = data.orders.find((o) => o.id === orderId);
+    if (!order) throw new Error('Order not found. Refresh and try again.');
+    if (order.paymentStatus === 'paid' || order.status === 'completed') throw new Error('This order is already paid/closed.');
+
+    await recordOrderPayment({ orderId, amount: Number(order.total), paymentMethod, idempotencyKey: makeOrderIdempotencyKey(), sourceDevice: 'POS' });
+
+    let status = order.operationalStatus || 'in_progress';
+    const sequence: Record<string, string | undefined> = {
+      open: 'in_progress',
+      in_progress: 'ready',
+      ready: order.fulfillmentType === 'delivery' ? 'delivered' : order.fulfillmentType === 'takeaway' ? 'picked_up' : 'served',
+      served: 'completed',
+      picked_up: 'completed',
+      delivered: 'completed',
+    };
+    for (let guard = 0; guard < 5 && status !== 'completed'; guard += 1) {
+      const next = sequence[status];
+      if (!next) break;
+      const result = await transitionOrderStatus({ orderId, newStatus: next, sourceDevice: 'POS' });
+      status = result.operational_status;
     }
+    if (status !== 'completed') throw new Error(`Payment recorded, but order could not close from status: ${status}`);
 
-    // ── Offline path ──
-    try {
-      const { toast } = await import('sonner');
-      const order = data.orders.find((o) => o.id === orderId);
-      const tableId = explicitTableId || order?.tableId || undefined;
-
-      const updatePayload: any = {
-        id: orderId,
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-      };
-      if (paymentMethod) updatePayload.payment_method = paymentMethod;
-
-      // Update order in cache
-      const cachedOrders = await getCachedData('orders');
-      const updatedOrders = cachedOrders.map((o: any) =>
-        o.id === orderId ? { ...o, ...updatePayload } : o
-      );
-      await cacheTableData('orders', updatedOrders);
-
-      // Directly update React orders state
-      data.setOrders((prev: Order[]) =>
-        prev.map((o) =>
-          o.id === orderId
-            ? { ...o, status: 'completed' as const, completedAt: new Date(), paymentMethod: paymentMethod || o.paymentMethod }
-            : o
-        )
-      );
-
-      // Queue order update for sync
-      await addToSyncQueue({
-        table: 'orders',
-        action: 'update',
-        data: updatePayload,
-        timestamp: Date.now(),
-      });
-
-      // Free table locally
-      if (tableId && isUuid(tableId)) {
-        const cachedTables = await getCachedData('restaurant_tables');
-        const updatedTables = cachedTables.map((t: any) =>
-          t.id === tableId
-            ? { ...t, status: 'available', current_order_id: null }
-            : t
-        );
-        await cacheTableData('restaurant_tables', updatedTables);
-
-        // Directly update React tables state
-        data.setTables((prev: Table[]) =>
-          prev.map((t) =>
-            t.id === tableId
-              ? { ...t, status: 'available' as const, currentOrderId: undefined }
-              : t
-          )
-        );
-
-        await addToSyncQueue({
-          table: 'restaurant_tables',
-          action: 'update',
-          data: { id: tableId, status: 'available', current_order_id: null },
-          timestamp: Date.now() + 1,
-        });
-      }
-
-      toast.success('Order settled offline — will sync when online');
-    } catch (offlineError) {
-      console.error('settleOrder offline error:', offlineError);
-      const { toast } = await import('sonner');
-      toast.error('Failed to settle order offline');
-      throw offlineError;
+    const safeTableId = explicitTableId || order.tableId || undefined;
+    data.setOrders((prev: Order[]) => prev.map((o) => o.id === orderId
+      ? { ...o, status: 'completed' as const, operationalStatus: 'completed', paymentStatus: 'paid', completedAt: new Date(), paymentMethod }
+      : o));
+    if (safeTableId && isUuid(safeTableId)) {
+      data.setTables((prev: Table[]) => prev.map((t) => t.id === safeTableId
+        ? { ...t, status: 'available' as const, currentOrderId: undefined }
+        : t));
     }
-  }, [data.orders, actions, data.refetch]);
-  
+    await data.refetch();
+  }, [data.orders, data.refetch]);
+
+  const itemLessAction = useCallback(async (
+    orderItemId: string,
+    quantity: number,
+    reason: ItemLessReason,
+    details?: string,
+    disposition: 'not_prepared' | 'waste' | 'returned' = 'not_prepared',
+  ) => {
+    if (!navigator.onLine) throw new Error('Item Less requires an online connection.');
+    await createItemLess({ orderItemId, quantityLess: quantity, reasonCode: reason, reasonDetails: details, inventoryDisposition: disposition, sourceDevice: 'POS' });
+    await data.refetch();
+  }, [data.refetch]);
+
   const cancelOrderAction = useCallback(async (orderId: string) => {
     // ── Online path ──
     if (navigator.onLine) {
@@ -1226,6 +1171,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     completeOrder,
     updateOrder: updateOrderAction,
     settleOrder: settleOrderAction,
+    itemLess: itemLessAction,
     cancelOrder: cancelOrderAction,
     getTableOrder,
     calculateRecipeCost,
@@ -1237,7 +1183,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     addCartItemNote, loadOrderToCart, getOrderById, getTablesByFloor,
     getTableOrder, getStockPurchaseHistory, calculateRecipeCost,
     getLowStockAlerts, getTodaysSales, completeOrder, updateOrderAction,
-    settleOrderAction, cancelOrderAction, addStoreStockAction,
+    settleOrderAction, itemLessAction, cancelOrderAction, addStoreStockAction,
     transferToKitchenAction, transferToStoreAction, removeStockAction,
     sellStockAction, updateSettingsAction, updateInvoiceSettingsAction, wrapAction,
   ]);

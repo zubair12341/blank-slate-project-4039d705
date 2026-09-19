@@ -48,88 +48,13 @@ const applyThermalPrintSizing = (doc: Document): void => {
   }
 };
 
-export function printWithImages(html: string, onPrinted?: () => void): void {
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.width = `${THERMAL_PAPER_WIDTH_MM}mm`;
-  iframe.style.height = '1px';
-  iframe.style.border = '0';
-  iframe.style.opacity = '0';
-  iframe.style.pointerEvents = 'none';
-  iframe.style.left = '-9999px';
-  iframe.style.top = '-9999px';
-  document.body.appendChild(iframe);
-
-  const iframeDoc = iframe.contentWindow?.document;
-  if (!iframeDoc) {
-    document.body.removeChild(iframe);
-    return;
-  }
-
-  const fullHtml = html.trimStart().toLowerCase().startsWith('<!doctype')
-    ? html
-    : `<!DOCTYPE html>${html}`;
-
-  iframeDoc.open();
-  iframeDoc.write(fullHtml);
-  iframeDoc.close();
-
-  let hasPrinted = false;
-
-  const cleanup = () => {
-    if (iframe.parentNode) {
-      document.body.removeChild(iframe);
-    }
-    onPrinted?.();
-  };
-
-  const triggerPrint = () => {
-    if (hasPrinted) return;
-    hasPrinted = true;
-
-    applyThermalPrintSizing(iframeDoc);
-
-    setTimeout(() => {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-      setTimeout(cleanup, PRINT_CLEANUP_DELAY_MS);
-    }, 120);
-  };
-
-  const images = iframeDoc.querySelectorAll('img');
-
-  if (images.length === 0) {
-    triggerPrint();
-    return;
-  }
-
-  let loadedCount = 0;
-  const totalImages = images.length;
-
-  const markLoaded = () => {
-    loadedCount += 1;
-    if (loadedCount >= totalImages) {
-      triggerPrint();
-    }
-  };
-
-  images.forEach((img) => {
-    if (img.complete) {
-      markLoaded();
-      return;
-    }
-
-    img.onload = markLoaded;
-    img.onerror = markLoaded;
-  });
-
-  setTimeout(() => {
-    if (!hasPrinted) {
-      triggerPrint();
-    }
-  }, IMAGE_LOAD_TIMEOUT_MS);
+export function printWithImages(_html: string, onPrinted?: () => void): void {
+  // Browser printing is deliberately disabled for the POS. window.print() always
+  // opens browser UI in normal Chrome and must never be used for restaurant jobs.
+  // All KOT/receipt printing goes through localPrintBridge -> Windows spooler.
+  console.error('Legacy browser print blocked: use localPrintBridge instead.');
+  onPrinted?.();
 }
-
 
 // Loud notification sound for kitchen invoice (longer, louder beep)
 export function playKitchenNotificationSound(): void {
