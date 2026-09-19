@@ -77,6 +77,7 @@ export default function POS() {
     getOrderById,
     cancelOrder,
     settleOrder,
+    itemLess,
   } = useRestaurant();
 
   const isMobile = useIsMobile();
@@ -103,6 +104,12 @@ export default function POS() {
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [isSettling, setIsSettling] = useState(false);
   const [isPrintingKitchen, setIsPrintingKitchen] = useState(false);
+  const [itemLessTarget, setItemLessTarget] = useState<{ id: string; name: string; max: number } | null>(null);
+  const [itemLessQty, setItemLessQty] = useState(1);
+  const [itemLessReason, setItemLessReason] = useState<'customer_changed_mind' | 'wrong_item_entered' | 'item_unavailable' | 'duplicate_entry' | 'kitchen_issue' | 'customer_complaint' | 'other'>('customer_changed_mind');
+  const [itemLessDetails, setItemLessDetails] = useState('');
+  const [itemLessDisposition, setItemLessDisposition] = useState<'not_prepared' | 'waste' | 'returned'>('not_prepared');
+  const [isItemLessSaving, setIsItemLessSaving] = useState(false);
 
   const isEditingExistingOrder = !!currentEditingOrderId;
 
@@ -307,7 +314,12 @@ export default function POS() {
     setIsSettling(true);
     try {
       await settleOrder(completedOrder.id, paymentMethod, completedOrder.tableId);
-      toast.success('Order settled and table freed!');
+      try {
+        await printCustomerInvoice('PAID');
+      } catch {
+        toast.error('Payment completed, but invoice did not print. You can reprint it from Orders.');
+      }
+      toast.success('Payment completed and table closed.');
       setCompletedOrder(null);
       handleBackToOrderType();
     } catch (error) {
@@ -500,7 +512,7 @@ export default function POS() {
     }
   };
 
-  const printCustomerInvoice = async () => {
+  const printCustomerInvoice = async (billStatus: 'UNPAID' | 'PAID' = 'UNPAID') => {
     if (!completedOrder) return;
     const lines = [
       settings.invoice?.title || settings.name,
@@ -508,6 +520,7 @@ export default function POS() {
       `Tel: ${settings.phone}`,
       '================================',
       `Order: ${completedOrder.orderNumber}`,
+      `Status: ${billStatus}`,
       new Date(completedOrder.createdAt).toLocaleString('en-PK'),
       `Type: ${completedOrder.orderType.toUpperCase()}`,
       completedOrder.tableNumber ? `Table: #${completedOrder.tableNumber}` : '',
@@ -522,7 +535,7 @@ export default function POS() {
       gstEnabled ? `GST: ${settings.currencySymbol} ${completedOrder.tax.toLocaleString()}` : '',
       completedOrder.discount > 0 ? `Discount: -${settings.currencySymbol} ${completedOrder.discount.toLocaleString()}` : '',
       `TOTAL: ${settings.currencySymbol} ${completedOrder.total.toLocaleString()}`,
-      `Payment: ${paymentMethod.toUpperCase()}`,
+      billStatus === 'PAID' ? `Payment: ${paymentMethod.toUpperCase()}` : 'Payment: UNPAID',
       '================================',
       settings.invoice?.footer || 'Thank you for dining with us!',
       '',
@@ -535,7 +548,7 @@ export default function POS() {
         type: 'CUSTOMER_RECEIPT',
         content: lines.join('\n'),
       });
-      toast.success('Customer bill printed silently.');
+      toast.success(`${billStatus === 'PAID' ? 'Paid invoice' : 'Unpaid bill'} printed silently.`);
     } catch (error) {
       toast.error(error instanceof Error
         ? `Silent print failed: ${error.message}. Start/check the Local Print Bridge in Settings → Printing.`
@@ -608,7 +621,20 @@ export default function POS() {
                       variant="outline"
                       size="icon"
                       className="h-8 w-8"
-                      onClick={() => updateCartItemQuantity(item.menuItem.id, item.quantity - 1, item.variant?.id)}
+                      onClick={() => {
+                        if (isEditingExistingOrder) {
+                          const order = currentEditingOrderId ? getOrderById(currentEditingOrderId) : undefined;
+                          const row = order?.items.find((oi) => oi.menuItemId === item.menuItem.id && (oi.variantId || '') === (item.variant?.id || '') && Number(oi.finalQuantity ?? oi.quantity) > 0);
+                          if (row?.id) {
+                            setItemLessTarget({ id: row.id, name: displayName, max: Number(row.finalQuantity ?? row.quantity) });
+                            setItemLessQty(1);
+                          } else {
+                            toast.error('Saved item row not found. Refresh the order.');
+                          }
+                        } else {
+                          updateCartItemQuantity(item.menuItem.id, item.quantity - 1, item.variant?.id);
+                        }
+                      }
                     >
                       <Minus className="h-3 w-3" />
                     </Button>
@@ -625,7 +651,16 @@ export default function POS() {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-destructive hover:text-destructive"
-                      onClick={() => removeFromCart(item.menuItem.id, item.variant?.id)}
+                      onClick={() => {
+                        if (isEditingExistingOrder) {
+                          const order = currentEditingOrderId ? getOrderById(currentEditingOrderId) : undefined;
+                          const row = order?.items.find((oi) => oi.menuItemId === item.menuItem.id && (oi.variantId || '') === (item.variant?.id || '') && Number(oi.finalQuantity ?? oi.quantity) > 0);
+                          if (row?.id) {
+                            setItemLessTarget({ id: row.id, name: displayName, max: Number(row.finalQuantity ?? row.quantity) });
+                            setItemLessQty(Number(row.finalQuantity ?? row.quantity));
+                          } else toast.error('Saved item row not found. Refresh the order.');
+                        } else removeFromCart(item.menuItem.id, item.variant?.id);
+                      }
                     >
                       <X className="h-4 w-4" />
                     </Button>
@@ -673,18 +708,33 @@ export default function POS() {
             Kitchen
           </Button>
           {isEditingExistingOrder && currentEditingOrderId && (
-            <Button
-              variant="secondary"
-              className="flex-1"
-              onClick={() => {
-                const existing = getOrderById(currentEditingOrderId);
-                if (existing) setCompletedOrder(existing);
-                else toast.error('Order details are not available yet.');
-              }}
-            >
-              <Banknote className="h-4 w-4 mr-2" />
-              Payment / Close
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const existing = getOrderById(currentEditingOrderId);
+                  if (existing) {
+                    setCompletedOrder(existing);
+                    setTimeout(() => void printCustomerInvoice('UNPAID'), 0);
+                  } else toast.error('Order details are not available yet.');
+                }}
+              >
+                <Printer className="h-4 w-4 mr-2" />
+                Unpaid Bill
+              </Button>
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => {
+                  const existing = getOrderById(currentEditingOrderId);
+                  if (existing) setCompletedOrder(existing);
+                  else toast.error('Order details are not available yet.');
+                }}
+              >
+                <Banknote className="h-4 w-4 mr-2" />
+                Pay & Close
+              </Button>
+            </>
           )}
           <Button className="flex-1" onClick={handleCompleteOrder} disabled={cart.length === 0 || !isOnline || isPlacingOrder}>
             {isPlacingOrder ? 'Sending...' : isEditingExistingOrder ? 'Add Items' : 'Place Order'}
@@ -1151,9 +1201,9 @@ export default function POS() {
             </RadioGroup>
           </div>
           <DialogFooter className="flex-col gap-2 sm:flex-col">
-            <Button onClick={printCustomerInvoice} className="w-full">
+            <Button onClick={() => void printCustomerInvoice('UNPAID')} variant="outline" className="w-full">
               <Printer className="h-4 w-4 mr-2" />
-              Print Customer Invoice
+              Print Unpaid Bill
             </Button>
             {completedOrder?.orderType === 'dine-in' ? (
               <div className="flex gap-2 w-full">
@@ -1183,6 +1233,70 @@ export default function POS() {
                 New Order
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Item Less — saved order quantities are never silently edited/deleted. */}
+      <Dialog open={!!itemLessTarget} onOpenChange={(open) => !open && setItemLessTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Item Less</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <p className="font-semibold">{itemLessTarget?.name}</p>
+              <p className="text-sm text-muted-foreground">Available quantity: {itemLessTarget?.max}</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Quantity Less</Label>
+              <Input type="number" min={1} max={itemLessTarget?.max || 1} value={itemLessQty}
+                onChange={(e) => setItemLessQty(Math.max(1, Math.min(Number(e.target.value) || 1, itemLessTarget?.max || 1)))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Reason</Label>
+              <Select value={itemLessReason} onValueChange={(v) => setItemLessReason(v as typeof itemLessReason)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="customer_changed_mind">Customer Changed Mind</SelectItem>
+                  <SelectItem value="wrong_item_entered">Wrong Item Entered</SelectItem>
+                  <SelectItem value="item_unavailable">Item Unavailable</SelectItem>
+                  <SelectItem value="duplicate_entry">Duplicate Entry</SelectItem>
+                  <SelectItem value="kitchen_issue">Kitchen Issue</SelectItem>
+                  <SelectItem value="customer_complaint">Customer Complaint</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Stock Treatment</Label>
+              <Select value={itemLessDisposition} onValueChange={(v) => setItemLessDisposition(v as typeof itemLessDisposition)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="not_prepared">Not Prepared — Restore Stock</SelectItem>
+                  <SelectItem value="waste">Prepared / Waste — Do Not Restore</SelectItem>
+                  <SelectItem value="returned">Returned — Restore Stock</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Details {itemLessReason === 'other' ? '(required)' : '(optional)'}</Label>
+              <Textarea value={itemLessDetails} onChange={(e) => setItemLessDetails(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setItemLessTarget(null)}>Cancel</Button>
+            <Button disabled={isItemLessSaving || (itemLessReason === 'other' && !itemLessDetails.trim())} onClick={async () => {
+              if (!itemLessTarget) return;
+              setIsItemLessSaving(true);
+              try {
+                await itemLess(itemLessTarget.id, itemLessQty, itemLessReason, itemLessDetails || undefined, itemLessDisposition);
+                toast.success('Item Less recorded in the audit trail.');
+                setItemLessTarget(null);
+                setItemLessDetails('');
+                if (currentEditingOrderId) loadOrderToCart(currentEditingOrderId);
+              } catch (error) {
+                toast.error(error instanceof Error ? error.message : 'Failed to record Item Less');
+              } finally { setIsItemLessSaving(false); }
+            }}>{isItemLessSaving ? 'Saving...' : 'Confirm Item Less'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
