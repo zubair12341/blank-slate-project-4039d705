@@ -684,7 +684,7 @@ export default function POS() {
           {!isOnline ? (
             <>
               <WifiOff className="h-4 w-4" />
-              <span>Offline Mode — Orders are saved locally</span>
+              <span>Offline Mode — cart is preserved, but sending/changing orders is disabled until reconnected</span>
             </>
           ) : (
             <>
