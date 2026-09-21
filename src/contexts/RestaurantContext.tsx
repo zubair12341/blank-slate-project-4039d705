@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useMemo } from
 import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseData } from '@/hooks/useSupabaseData';
 import { useSupabaseActions } from '@/hooks/useSupabaseActions';
-import { addToSyncQueue, cacheTableData, getCachedData } from '@/lib/offlineDb';
+import { addToSyncQueue, cacheTableData, getCachedData, removeQueuedMutationsForOrder } from '@/lib/offlineDb';
 import { createWorkflowOrder, addItemsToWorkflowOrder, makeOrderIdempotencyKey, recordOrderPayment, transitionOrderStatus, createItemLess, type ItemLessReason } from '@/services/orderWorkflow';
 import {
   Ingredient,
@@ -1031,6 +1031,11 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         const order = data.orders.find((o) => o.id === orderId);
         const safeTableId = isUuid(order?.tableId) ? order?.tableId : undefined;
         await actions.cancelOrder(orderId, safeTableId);
+
+        // The server cancellation is now authoritative. Delete any old queued
+        // offline insert/update for this same order before the sync engine can
+        // replay it and turn the cancelled order back into pending.
+        await removeQueuedMutationsForOrder(orderId);
 
         // Release the table in the POS immediately. Match both the order's
         // table_id and current_order_id so legacy/stale order snapshots cannot
