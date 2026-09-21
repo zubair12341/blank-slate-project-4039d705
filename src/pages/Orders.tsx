@@ -97,13 +97,17 @@ export default function Orders() {
       return;
     }
 
-    // Cancel order - this will also free the table if needed
-    await cancelOrder(orderToCancel.id);
-    toast.success(`Order ${orderToCancel.orderNumber} cancelled`);
-    setShowCancelDialog(false);
-    setOrderToCancel(null);
-    setCancelPassword('');
-    setSelectedOrder(null);
+    try {
+      // Cancel order - the workflow RPC also releases the linked dine-in table.
+      await cancelOrder(orderToCancel.id);
+      toast.success(`Order ${orderToCancel.orderNumber} cancelled`);
+      setShowCancelDialog(false);
+      setOrderToCancel(null);
+      setCancelPassword('');
+      setSelectedOrder(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to cancel order');
+    }
   };
 
   const handleExportCSV = () => {
