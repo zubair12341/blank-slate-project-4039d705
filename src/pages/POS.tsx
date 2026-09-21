@@ -57,6 +57,7 @@ import { cn } from '@/lib/utils';
 import { Order, DiscountType } from '@/types/restaurant';
 import { playKitchenNotificationSound } from '@/hooks/usePrintWithImages';
 import { createPrintJobId, sendLocalPrintJob } from '@/services/localPrintBridge';
+import { supabase } from '@/integrations/supabase/client';
 
 type OrderTypeSelection = 'dine-in' | 'takeaway' | 'online' | null;
 
@@ -100,6 +101,8 @@ export default function POS() {
   const [cancelPasswordError, setCancelPasswordError] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile'>('cash');
   const [customerName, setCustomerName] = useState('');
+  const [customers, setCustomers] = useState<Array<{ id: string; name: string; phone?: string | null }>>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [selectedWaiterId, setSelectedWaiterId] = useState('');
   const [discountType, setDiscountType] = useState<DiscountType>('fixed');
   const [discountValue, setDiscountValue] = useState(0);
@@ -115,8 +118,36 @@ export default function POS() {
   const [itemLessDetails, setItemLessDetails] = useState('');
   const [itemLessDisposition, setItemLessDisposition] = useState<'not_prepared' | 'waste' | 'returned'>('not_prepared');
   const [isItemLessSaving, setIsItemLessSaving] = useState(false);
+  const [itemLessPassword, setItemLessPassword] = useState('');
+  const [itemLessPasswordError, setItemLessPasswordError] = useState('');
 
   const isEditingExistingOrder = !!currentEditingOrderId;
+
+  useEffect(() => {
+    void supabase.from('customers' as any).select('id,name,phone').order('name').then(({ data }) => {
+      setCustomers((data || []) as any);
+    });
+  }, []);
+
+  const persistCustomerForOrder = async (orderId: string) => {
+    const name = customerName.trim();
+    if (!name) {
+      await supabase.from('orders').update({ customer_name: null, customer_id: null } as any).eq('id', orderId);
+      setSelectedCustomerId(null);
+      return null;
+    }
+    let customer = customers.find((entry) => entry.name.trim().toLowerCase() === name.toLowerCase());
+    if (!customer) {
+      const { data, error } = await supabase.from('customers' as any).insert({ name }).select('id,name,phone').single();
+      if (error) throw error;
+      customer = data as any;
+      setCustomers((prev) => [...prev, customer!].sort((a, b) => a.name.localeCompare(b.name)));
+    }
+    setSelectedCustomerId(customer.id);
+    const { error } = await supabase.from('orders').update({ customer_name: customer.name, customer_id: customer.id } as any).eq('id', orderId);
+    if (error) throw error;
+    return customer;
+  };
 
   // Queue Edit links carry the order id. Hydrate the order directly instead of
   // making the cashier choose Takeaway/Online again.
@@ -208,6 +239,7 @@ export default function POS() {
     setSelectedTableId(tableId);
     setSelectedWaiterId('');
     setCustomerName('');
+    setSelectedCustomerId(null);
     setDiscountType('fixed');
     setDiscountValue(0);
     setDiscountReason('');
@@ -219,6 +251,8 @@ export default function POS() {
         setSelectedWaiterId(result.waiterId);
       }
       if (result?.order) {
+        setCustomerName(result.order.customerName || '');
+        setSelectedCustomerId(null);
         setDiscountType(result.order.discountType || 'fixed');
         setDiscountValue(result.order.discountValue || 0);
         setDiscountReason(result.order.discountReason || '');
@@ -356,6 +390,13 @@ export default function POS() {
     if (order) {
       const sourceSnapshot = [...cart];
       setShowCheckout(false);
+
+      try {
+        await persistCustomerForOrder(order.id);
+      } catch (customerError) {
+        console.error('Customer save failed:', customerError);
+        toast.error('Order saved, but customer could not be stored.');
+      }
 
       // Send the KOT immediately. The order is already safely stored, so a printer
       // problem must never hold up the cashier or create a duplicate order.
@@ -692,10 +733,19 @@ export default function POS() {
           <Input
             aria-label="Customer name"
             placeholder="Customer name (optional)"
+            list="pos-customer-list"
             value={customerName}
-            onChange={(e) => setCustomerName(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setCustomerName(value);
+              const match = customers.find((entry) => entry.name.toLowerCase() === value.trim().toLowerCase());
+              setSelectedCustomerId(match?.id || null);
+            }}
             className="h-9 pl-9"
           />
+          <datalist id="pos-customer-list">
+            {customers.map((customer) => <option key={customer.id} value={customer.name}>{customer.phone || ''}</option>)}
+          </datalist>
         </div>
       </div>
 
@@ -880,7 +930,7 @@ export default function POS() {
                     await sendLocalPrintJob({ jobId: createPrintJobId(), type: 'CUSTOMER_RECEIPT', content: lines.join('\n') });
                     toast.success('Unpaid bill printed silently.');
                   } catch (error) {
-                    toast.error(error instanceof Error ? error.message : 'Failed to print unpaid bill.');
+                    toast.warning('Bill remains UNPAID. Local printer is unavailable; check Settings → Printing.');
                   }
                 }}
               >
@@ -1487,6 +1537,11 @@ export default function POS() {
               </Select>
             </div>
             <div className="space-y-2">
+              <Label>Authorization Password</Label>
+              <Input type="password" inputMode="numeric" maxLength={5} value={itemLessPassword} onChange={(e) => { setItemLessPassword(e.target.value); setItemLessPasswordError(''); }} placeholder="Enter 5-digit password" className={itemLessPasswordError ? 'border-destructive' : ''} />
+              {itemLessPasswordError && <p className="text-sm text-destructive">{itemLessPasswordError}</p>}
+            </div>
+            <div className="space-y-2">
               <Label>Details {itemLessReason === 'other' ? '(required)' : '(optional)'}</Label>
               <Textarea value={itemLessDetails} onChange={(e) => setItemLessDetails(e.target.value)} />
             </div>
@@ -1495,12 +1550,19 @@ export default function POS() {
             <Button variant="outline" onClick={() => setItemLessTarget(null)}>Cancel</Button>
             <Button disabled={isItemLessSaving || (itemLessReason === 'other' && !itemLessDetails.trim())} onClick={async () => {
               if (!itemLessTarget) return;
+              const correctPassword = settings.security?.cancelOrderPassword || '12345';
+              if (itemLessPassword !== correctPassword) {
+                setItemLessPasswordError('Incorrect password');
+                return;
+              }
               setIsItemLessSaving(true);
               try {
                 await itemLess(itemLessTarget.id, itemLessQty, itemLessReason, itemLessDetails || undefined, itemLessDisposition);
                 toast.success('Item Less recorded in the audit trail.');
                 setItemLessTarget(null);
                 setItemLessDetails('');
+                setItemLessPassword('');
+                setItemLessPasswordError('');
                 // RestaurantContext already updates the cart/order optimistically.
                 // Do not reload from the previous render here: that stale snapshot
                 // was what made removed items reappear until a manual refresh.
