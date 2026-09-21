@@ -1150,12 +1150,46 @@ export function useSupabaseActions() {
       );
     }
 
-    // Free the table (best-effort) — resolve tableId if caller didn't provide it.
+    // Cancellation must release every table link for this order. Do not leave
+    // a stale occupied/current_order_id pair behind even when the in-memory
+    // order did not contain table_id.
     try {
-      const resolvedTableId = await resolveTableIdForOrder(orderId, tableId);
-      if (resolvedTableId) await freeTable(resolvedTableId);
+      const candidateTableIds = new Set<string>();
+      if (isUuid(tableId)) candidateTableIds.add(tableId);
+
+      const { data: orderRow } = await supabase
+        .from('orders')
+        .select('table_id')
+        .eq('id', orderId)
+        .maybeSingle();
+      if (isUuid(orderRow?.table_id)) candidateTableIds.add(orderRow.table_id);
+
+      const { data: linkedTables, error: linkedErr } = await supabase
+        .from('restaurant_tables')
+        .select('id')
+        .eq('current_order_id', orderId);
+      if (linkedErr) throw linkedErr;
+      (linkedTables || []).forEach((row) => {
+        if (isUuid(row.id)) candidateTableIds.add(row.id);
+      });
+
+      for (const tableIdToFree of candidateTableIds) {
+        const result = await freeTable(tableIdToFree);
+        if (!result?.success) throw new Error(result?.error || 'Failed to release table');
+      }
+
+      // Verify no stale link survived. This also catches legacy mismatches.
+      const { data: stillLinked, error: verifyErr } = await supabase
+        .from('restaurant_tables')
+        .select('id')
+        .eq('current_order_id', orderId);
+      if (verifyErr) throw verifyErr;
+      if ((stillLinked || []).length > 0) {
+        throw new Error('Order cancelled but its table could not be released');
+      }
     } catch (tableErr) {
-      console.error('Failed to free table after cancel, continuing:', tableErr);
+      console.error('Failed to free table after cancel:', tableErr);
+      throw tableErr;
     }
 
     // Restore kitchen stock - fetch order items and recipes from DB to ensure accuracy
