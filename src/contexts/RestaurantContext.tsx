@@ -992,15 +992,18 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           : item)
         .filter((item) => Number(item.finalQuantity ?? item.quantity) > 0);
       const subtotal = Math.max(0, Number(candidate.subtotal) - amountAffected);
+      const gstEnabled = settings.invoice?.gstEnabled ?? true;
+      const tax = gstEnabled ? subtotal * (Number(settings.taxRate || 0) / 100) : 0;
       const discount = candidate.discountType === 'percentage'
         ? subtotal * Number(candidate.discountValue || 0) / 100
-        : Math.min(Number(candidate.discount || 0), subtotal + Number(candidate.tax || 0));
+        : Math.min(Number(candidate.discount || 0), subtotal + tax);
       return {
         ...candidate,
         items: nextItems,
         subtotal,
+        tax,
         discount,
-        total: Math.max(0, subtotal + Number(candidate.tax || 0) - discount),
+        total: Math.max(0, subtotal + tax - discount),
       };
     }));
     setCart((prev) => prev.flatMap((item) => {
@@ -1022,7 +1025,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       setCart(previousCart);
       throw error;
     }
-  }, [cart, data.orders, data.setOrders, fetchOrderWithItems]);
+  }, [cart, data.orders, data.setOrders, fetchOrderWithItems, settings.invoice?.gstEnabled, settings.taxRate]);
 
   const cancelOrderAction = useCallback(async (orderId: string) => {
     // ── Online path ──
