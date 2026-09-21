@@ -181,10 +181,18 @@ export default function POS() {
     const table = tables.find((t) => t.id === tableId);
     if (!table) return;
 
+    // A table selection starts a completely isolated POS session. Never allow a
+    // previous table/order cart to leak into the newly selected table.
+    clearCart();
     setSelectedTableId(tableId);
+    setSelectedWaiterId('');
+    setCustomerName('');
+    setDiscountType('fixed');
+    setDiscountValue(0);
+    setDiscountReason('');
 
     if (table.status === 'occupied' && table.currentOrderId) {
-      // Load existing order for editing and pre-select waiter
+      // Load only the order explicitly linked to this occupied table.
       const result = loadOrderToCart(table.currentOrderId);
       if (result?.waiterId) {
         setSelectedWaiterId(result.waiterId);
@@ -250,6 +258,29 @@ export default function POS() {
       return;
     }
     
+    if (orderType === 'dine-in') {
+      if (!selectedTableId) {
+        toast.error('Please select a table before placing the order.');
+        return;
+      }
+      const selectedTable = tables.find((table) => table.id === selectedTableId);
+      if (!selectedTable) {
+        toast.error('Selected table no longer exists. Please select the table again.');
+        return;
+      }
+      if (isEditingExistingOrder) {
+        const editingOrder = currentEditingOrderId ? getOrderById(currentEditingOrderId) : undefined;
+        if (!editingOrder || editingOrder.tableId !== selectedTableId || selectedTable.currentOrderId !== currentEditingOrderId) {
+          toast.error('Table/order mismatch detected. Reopen the table before making changes.');
+          handleBackToOrderType();
+          return;
+        }
+      } else if (selectedTable.status === 'occupied' || selectedTable.currentOrderId) {
+        toast.error(`Table ${selectedTable.number} already has an open order. Reopen that table instead.`);
+        return;
+      }
+    }
+
     setIsPlacingOrder(true);
     let order: Order | null = null;
 
