@@ -87,6 +87,7 @@ export default function POS() {
   const isMobile = useIsMobile();
   const { isOnline, pendingSyncCount } = useOnlineStatus();
   const [showMobileCart, setShowMobileCart] = useState(false);
+  const [showDiscountPanel, setShowDiscountPanel] = useState(false);
 
   const [orderType, setOrderType] = useState<OrderTypeSelection>(null);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
@@ -709,7 +710,7 @@ export default function POS() {
             <p className="text-sm text-muted-foreground">Select items from the menu</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-1.5">
             {cart.map((item) => {
               const cartKey = item.variant ? `${item.menuItem.id}:${item.variant.id}` : item.menuItem.id;
               const displayName = item.variant 
@@ -718,16 +719,16 @@ export default function POS() {
               const displayPrice = item.variant ? item.variant.price : item.menuItem.price;
               
               return (
-                <div key={cartKey} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md border bg-background px-2.5 py-2">
+                <div key={cartKey} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 rounded-md border bg-background px-2 py-1.5">
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-sm truncate">{displayName}</h4>
-                    <p className="text-sm text-muted-foreground">{formatPrice(displayPrice)} each</p>
+                    <h4 className="font-medium text-[13px] leading-4 truncate">{displayName}</h4>
+                    <p className="text-xs text-muted-foreground">{formatPrice(displayPrice)} each</p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     <Button
                       variant="outline"
                       size="icon"
-                      className="h-7 w-7"
+                      className="h-6 w-6"
                       onClick={() => {
                         if (isEditingExistingOrder) {
                           const order = currentEditingOrderId ? getOrderById(currentEditingOrderId) : undefined;
@@ -745,7 +746,7 @@ export default function POS() {
                     >
                       <Minus className="h-3 w-3" />
                     </Button>
-                    <span className="w-8 text-center font-medium">{item.quantity}</span>
+                    <span className="w-6 text-center text-sm font-semibold">{item.quantity}</span>
                     <Button
                       variant="outline"
                       size="icon"
@@ -757,7 +758,7 @@ export default function POS() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 text-destructive hover:text-destructive"
+                      className="h-6 w-6 text-destructive hover:text-destructive"
                       onClick={() => {
                         if (isEditingExistingOrder) {
                           const order = currentEditingOrderId ? getOrderById(currentEditingOrderId) : undefined;
@@ -780,26 +781,37 @@ export default function POS() {
       </div>
 
       {/* Cart Summary */}
-      <div className="shrink-0 border-t border-border px-3 py-2.5 space-y-2">
-        <div className="space-y-3">
-          <div className="rounded-lg border p-3 space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="flex items-center gap-2"><Percent className="h-4 w-4" /> Discount</Label>
-              <Select value={discountType} onValueChange={(v) => setDiscountType(v as DiscountType)}>
-                <SelectTrigger className="w-32 h-8"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="fixed">Rs. Amount</SelectItem>
-                  <SelectItem value="percentage">Percent %</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-[110px_1fr] gap-2">
-              <Input type="number" min={0} max={discountType === 'percentage' ? 100 : undefined}
-                value={discountValue || ''} placeholder={discountType === 'percentage' ? '0-100' : 'Amount'}
-                onChange={(e) => setDiscountValue(Math.max(0, discountType === 'percentage' ? Math.min(100, Number(e.target.value) || 0) : Number(e.target.value) || 0))} />
-              <Input value={discountReason} placeholder="Discount reason"
-                onChange={(e) => setDiscountReason(e.target.value)} />
-            </div>
+      <div className="shrink-0 border-t border-border px-3 py-2 space-y-1.5">
+        <div className="space-y-1.5">
+          <div>
+            <Button
+              type="button"
+              variant={discountAmount > 0 ? 'secondary' : 'outline'}
+              size="sm"
+              className="h-8 w-full justify-between px-3 text-xs"
+              onClick={() => setShowDiscountPanel((open) => !open)}
+            >
+              <span className="flex items-center gap-1.5"><Percent className="h-3.5 w-3.5" /> Discount{discountAmount > 0 ? ` · -${formatPrice(discountAmount)}` : ''}</span>
+              <span>{showDiscountPanel ? 'Hide' : 'Add'}</span>
+            </Button>
+            {showDiscountPanel && (
+              <div className="mt-2 rounded-md border bg-muted/20 p-2 space-y-2">
+                <div className="grid grid-cols-[120px_1fr] gap-2">
+                  <Select value={discountType} onValueChange={(v) => setDiscountType(v as DiscountType)}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="fixed">Rs. Amount</SelectItem>
+                      <SelectItem value="percentage">Percent %</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input className="h-8 text-xs" type="number" min={0} max={discountType === 'percentage' ? 100 : undefined}
+                    value={discountValue || ''} placeholder={discountType === 'percentage' ? '0-100' : 'Amount'}
+                    onChange={(e) => setDiscountValue(Math.max(0, discountType === 'percentage' ? Math.min(100, Number(e.target.value) || 0) : Number(e.target.value) || 0))} />
+                </div>
+                <Input className="h-8 text-xs" value={discountReason} placeholder="Discount reason"
+                  onChange={(e) => setDiscountReason(e.target.value)} />
+              </div>
+            )}
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Subtotal</span>
@@ -817,16 +829,16 @@ export default function POS() {
               <span>-{formatPrice(discountAmount)}</span>
             </div>
           )}
-          <div className="flex justify-between text-lg font-bold border-t border-border pt-2">
+          <div className="flex justify-between text-base font-bold border-t border-border pt-1.5">
             <span>Total</span>
             <span>{formatPrice(total)}</span>
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-1.5">
           <Button
             variant="outline"
-            className="w-full"
+            className="w-full h-8 px-2 text-xs"
             onClick={handlePrintKitchenInvoice}
             disabled={cart.length === 0}
           >
@@ -837,6 +849,8 @@ export default function POS() {
             <>
               <Button
                 variant="outline"
+                size="sm"
+                className="h-8 px-2 text-xs"
                 onClick={async () => {
                   const existing = getOrderById(currentEditingOrderId);
                   if (!existing) {
@@ -875,7 +889,8 @@ export default function POS() {
               </Button>
               <Button
                 variant="secondary"
-                className="w-full"
+                size="sm"
+                className="w-full h-8 px-2 text-xs"
                 onClick={() => {
                   const existing = getOrderById(currentEditingOrderId);
                   if (existing) setCompletedOrder(existing);
@@ -887,7 +902,7 @@ export default function POS() {
               </Button>
             </>
           )}
-          <Button className="w-full col-span-3 h-10 font-semibold" onClick={handleCompleteOrder} disabled={!isOnline || isPlacingOrder || (!isEditingExistingOrder && cart.length === 0) || (isEditingExistingOrder && pendingAdditions.length === 0)}>
+          <Button className="w-full col-span-3 h-9 text-sm font-semibold" onClick={handleCompleteOrder} disabled={!isOnline || isPlacingOrder || (!isEditingExistingOrder && cart.length === 0) || (isEditingExistingOrder && pendingAdditions.length === 0)}>
             {isPlacingOrder ? 'Saving...' : isEditingExistingOrder ? 'Save & Print New Items' : 'Place Order'}
           </Button>
         </div>
