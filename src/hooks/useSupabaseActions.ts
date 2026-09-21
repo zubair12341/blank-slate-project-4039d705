@@ -1123,32 +1123,22 @@ export function useSupabaseActions() {
   };
 
   const cancelOrder = async (orderId: string, tableId?: string) => {
-    // Enforce transition: pending -> cancelled
-    const { data: updated, error } = await supabase
-      .from('orders')
-      .update({ status: 'cancelled' })
-      .eq('id', orderId)
-      .eq('status', 'pending')
-      .select('id')
-      .maybeSingle();
+    // Workflow orders are protected by RLS and must be cancelled through the
+    // authoritative transition RPC. A direct orders.update() can be rejected
+    // even for an admin and was the reason Order History showed "Failed to cancel".
+    const { data: transitioned, error } = await supabase.rpc('transition_order_status', {
+      p_order_id: orderId,
+      p_new_status: 'cancelled',
+      p_expected_version: null,
+      p_source_device: 'POS',
+    });
 
     if (error) {
-      toast.error('Failed to cancel order');
+      console.error('cancelOrder transition failed:', error);
+      toast.error(error.message || 'Failed to cancel order');
       throw error;
     }
-
-    if (!updated) {
-      const { data: existing, error: existingErr } = await supabase
-        .from('orders')
-        .select('status')
-        .eq('id', orderId)
-        .maybeSingle();
-
-      if (existingErr) throw existingErr;
-      throw new Error(
-        existing ? `Cannot cancel order from status: ${existing.status}` : 'Order not found'
-      );
-    }
+    if (!transitioned) throw new Error('Order cancellation did not complete');
 
     // Cancellation must release every table link for this order. Do not leave
     // a stale occupied/current_order_id pair behind even when the in-memory
