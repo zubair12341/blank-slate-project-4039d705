@@ -1031,26 +1031,30 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         const order = data.orders.find((o) => o.id === orderId);
         const safeTableId = isUuid(order?.tableId) ? order?.tableId : undefined;
         await actions.cancelOrder(orderId, safeTableId);
-        // Optimistically update state
+
+        // Release the table in the POS immediately. Match both the order's
+        // table_id and current_order_id so legacy/stale order snapshots cannot
+        // leave the table looking reserved until a refresh.
         data.setOrders((prev: Order[]) =>
           prev.map((o) =>
-            o.id === orderId ? { ...o, status: 'cancelled' as const } : o
+            o.id === orderId
+              ? { ...o, status: 'cancelled' as const, operationalStatus: 'cancelled' }
+              : o
           )
         );
-        if (safeTableId) {
-          data.setTables((prev: Table[]) =>
-            prev.map((t) =>
-              t.id === safeTableId
-                ? { ...t, status: 'available' as const, currentOrderId: undefined }
-                : t
-            )
-          );
-        }
-        data.refetch();
+        data.setTables((prev: Table[]) =>
+          prev.map((t) =>
+            (t.currentOrderId === orderId || (safeTableId && t.id === safeTableId))
+              ? { ...t, status: 'available' as const, currentOrderId: undefined }
+              : t
+          )
+        );
+        // Reconcile in the background; cancellation UI should feel instant.
+        void data.refetch();
         return;
       } catch (error) {
         console.error('cancelOrder online error:', error);
-        // Fall through to offline path
+        throw error;
       }
     }
 
