@@ -177,3 +177,26 @@ export async function recordOrderPayment(input: {
     payment_status: string;
   };
 }
+
+
+export async function settleOrderAtomic(input: {
+  orderId: string;
+  paymentMethod: 'cash' | 'card' | 'mobile';
+  idempotencyKey?: string;
+  sourceDevice?: OrderSourceDevice;
+}) {
+  const { data, error } = await rpc('settle_order_atomic', {
+    p_order_id: input.orderId,
+    p_payment_method: input.paymentMethod,
+    p_idempotency_key: input.idempotencyKey ?? makeOrderIdempotencyKey(),
+    p_source_device: input.sourceDevice ?? 'POS',
+  });
+  if (error) throw error;
+  return data as {
+    order_id: string;
+    payment_status: string;
+    operational_status: string;
+    amount_collected: number;
+    duplicate?: boolean;
+  };
+}
