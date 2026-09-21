@@ -130,8 +130,7 @@ export default function POS() {
     const order = result.order;
     const nextType: OrderTypeSelection = state.orderType
       || (order.fulfillmentType === 'takeaway' ? 'takeaway'
-        : order.fulfillmentType === 'delivery' ? (order.orderChannel === 'online' ? 'online' : 'delivery')
-        : order.orderType === 'online' ? 'online'
+        : order.orderChannel === 'online' || order.orderType === 'online' ? 'online'
         : 'dine-in');
     setOrderType(nextType);
     setSelectedTableId(order.tableId || null);
@@ -176,6 +175,27 @@ export default function POS() {
   const total = subtotal + tax - discountAmount;
 
   const formatPrice = (price: number) => `${settings.currencySymbol} ${price.toLocaleString()}`;
+
+  // Existing-order cart contains the already-saved items plus anything the
+  // cashier has just added. Keep the delta explicit so Save only sends/prints
+  // the new kitchen items and never reprints the original KOT.
+  const getPendingAdditions = () => {
+    if (!currentEditingOrderId) return [...cart];
+    const existing = getOrderById(currentEditingOrderId);
+    if (!existing) return [];
+    const previous = new Map<string, number>();
+    existing.items.forEach((item) => {
+      const key = `${item.menuItemId}::${item.variantId || 'base'}`;
+      previous.set(key, (previous.get(key) || 0) + Number(item.finalQuantity ?? item.quantity));
+    });
+    return cart.flatMap((item) => {
+      const key = `${item.menuItem.id}::${item.variant?.id || 'base'}`;
+      const added = item.quantity - (previous.get(key) || 0);
+      return added > 0 ? [{ ...item, quantity: added }] : [];
+    });
+  };
+
+  const pendingAdditions = isEditingExistingOrder ? getPendingAdditions() : cart;
 
   const handleTableSelect = (tableId: string) => {
     const table = tables.find((t) => t.id === tableId);
@@ -281,6 +301,12 @@ export default function POS() {
       }
     }
 
+    const additionsToPrint = isEditingExistingOrder ? getPendingAdditions() : [...cart];
+    if (isEditingExistingOrder && additionsToPrint.length === 0) {
+      toast.error('Add at least one new item before saving. Use Pay & Close to finish the order.');
+      return;
+    }
+
     setIsPlacingOrder(true);
     let order: Order | null = null;
 
@@ -333,22 +359,7 @@ export default function POS() {
       // Send the KOT immediately. The order is already safely stored, so a printer
       // problem must never hold up the cashier or create a duplicate order.
       try {
-        let printSnapshot = sourceSnapshot;
-        if (isEditingExistingOrder && currentEditingOrderId) {
-          const existing = getOrderById(currentEditingOrderId);
-          if (existing) {
-            const previous = new Map<string, number>();
-            existing.items.forEach((item) => {
-              const key = `${item.menuItemId}::${item.variantId || 'base'}`;
-              previous.set(key, (previous.get(key) || 0) + Number(item.finalQuantity ?? item.quantity));
-            });
-            printSnapshot = sourceSnapshot.flatMap((item) => {
-              const key = `${item.menuItem.id}::${item.variant?.id || 'base'}`;
-              const added = item.quantity - (previous.get(key) || 0);
-              return added > 0 ? [{ ...item, quantity: added }] : [];
-            });
-          }
-        }
+        const printSnapshot = isEditingExistingOrder ? additionsToPrint : sourceSnapshot;
         if (printSnapshot.length > 0) await sendKitchenGroupsSilently(printSnapshot);
       } catch (printError) {
         toast.error('Order saved, but KOT did not print. Check Settings → Printing and use Kitchen to retry.');
@@ -835,8 +846,8 @@ export default function POS() {
               </Button>
             </>
           )}
-          <Button className="flex-1" onClick={handleCompleteOrder} disabled={cart.length === 0 || !isOnline || isPlacingOrder}>
-            {isPlacingOrder ? 'Sending...' : isEditingExistingOrder ? 'Add Items' : 'Place Order'}
+          <Button className="flex-1" onClick={handleCompleteOrder} disabled={!isOnline || isPlacingOrder || (!isEditingExistingOrder && cart.length === 0) || (isEditingExistingOrder && pendingAdditions.length === 0)}>
+            {isPlacingOrder ? 'Saving...' : isEditingExistingOrder ? 'Save & Print New Items' : 'Place Order'}
           </Button>
         </div>
       </div>
