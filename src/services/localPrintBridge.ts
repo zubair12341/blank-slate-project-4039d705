@@ -57,17 +57,29 @@ export async function getPrintBridgeHealth(timeoutMs = 1500): Promise<PrintBridg
   }
 }
 
-export async function sendLocalPrintJob(job: LocalPrintJob): Promise<{ ok: boolean; duplicate?: boolean; jobId: string }> {
-  const response = await fetch(`${BRIDGE_URL}/print`, {
-    method: 'POST',
-    headers: bridgeHeaders(),
-    body: JSON.stringify({ ...job, copies: Math.max(1, Math.min(job.copies || 1, 3)) }),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || !payload.ok) {
-    throw new Error(payload.error || `Local print failed (${response.status})`);
+export async function sendLocalPrintJob(job: LocalPrintJob, timeoutMs = 1200): Promise<{ ok: boolean; duplicate?: boolean; jobId: string }> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${BRIDGE_URL}/print`, {
+      method: 'POST',
+      headers: bridgeHeaders(),
+      body: JSON.stringify({ ...job, copies: Math.max(1, Math.min(job.copies || 1, 3)) }),
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || `Local print failed (${response.status})`);
+    }
+    return payload;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('Printer is not connected');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
   }
-  return payload;
 }
 
 export async function sendBridgeTestPrint(printer?: string) {
