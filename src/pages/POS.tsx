@@ -655,6 +655,21 @@ export default function POS() {
           </div>
         </div>
         <p className="text-sm text-muted-foreground">{cart.length} items</p>
+        {isEditingExistingOrder && (
+          <p className="mt-1 text-xs font-medium text-primary">
+            Add products from the left, then use “Save & Print New Items”. Existing items are not reprinted.
+          </p>
+        )}
+        <div className="relative mt-3">
+          <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            aria-label="Customer name"
+            placeholder="Customer name (optional)"
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
+            className="h-9 pl-9"
+          />
+        </div>
       </div>
 
       {/* Cart Items */}
@@ -782,10 +797,10 @@ export default function POS() {
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <Button
             variant="outline"
-            className="flex-1"
+            className="w-full"
             onClick={handlePrintKitchenInvoice}
             disabled={cart.length === 0}
           >
@@ -834,7 +849,7 @@ export default function POS() {
               </Button>
               <Button
                 variant="secondary"
-                className="flex-1"
+                className="w-full"
                 onClick={() => {
                   const existing = getOrderById(currentEditingOrderId);
                   if (existing) setCompletedOrder(existing);
@@ -846,7 +861,7 @@ export default function POS() {
               </Button>
             </>
           )}
-          <Button className="flex-1" onClick={handleCompleteOrder} disabled={!isOnline || isPlacingOrder || (!isEditingExistingOrder && cart.length === 0) || (isEditingExistingOrder && pendingAdditions.length === 0)}>
+          <Button className="w-full col-span-2 h-11 font-semibold" onClick={handleCompleteOrder} disabled={!isOnline || isPlacingOrder || (!isEditingExistingOrder && cart.length === 0) || (isEditingExistingOrder && pendingAdditions.length === 0)}>
             {isPlacingOrder ? 'Saving...' : isEditingExistingOrder ? 'Save & Print New Items' : 'Place Order'}
           </Button>
         </div>
@@ -967,9 +982,9 @@ export default function POS() {
           </div>
         </div>
 
-        {/* Waiter Selection for Dine-In */}
+        {/* Fast order controls */}
         {orderType === 'dine-in' && (
-          <div className="mb-4">
+          <div className="mb-3 flex items-center gap-2">
             <Select value={selectedWaiterId} onValueChange={setSelectedWaiterId}>
               <SelectTrigger className="w-full sm:w-64">
                 <Users className="h-4 w-4 mr-2" />
@@ -1041,24 +1056,33 @@ export default function POS() {
               })}
             </div>
           ) : !selectedCategory ? (
-            /* Category Grid */
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {menuCategories.map((category) => {
-                const categoryItemCount = menuItems.filter(
-                  (item) => item.categoryId === category.id && item.isAvailable
-                ).length;
-                return (
-                  <button
-                    key={category.id}
-                    onClick={() => setSelectedCategory(category.id)}
-                    className="pos-grid-item group h-28"
-                  >
-                    <div className="text-3xl mb-1">{category.icon}</div>
-                    <h4 className="font-semibold text-sm text-center line-clamp-1">{category.name}</h4>
-                    <p className="text-xs text-muted-foreground">{categoryItemCount} items</p>
-                  </button>
-                );
-              })}
+            <div className="space-y-3">
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                <Button size="sm" className="shrink-0">All Products</Button>
+                {menuCategories.map((category) => (
+                  <Button key={category.id} size="sm" variant="outline" className="shrink-0"
+                    onClick={() => setSelectedCategory(category.id)}>
+                    <span className="mr-1">{category.icon}</span>{category.name}
+                  </Button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                {filteredItems.map((item) => {
+                  const cartItem = cart.find((entry) => entry.menuItem.id === item.id);
+                  return (
+                    <button key={item.id}
+                      onClick={() => item.variants?.length ? setVariantPickerItem(item) : addToCart(item)}
+                      className={cn('pos-grid-item min-h-28', cartItem && 'selected')}>
+                      {cartItem && <span className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{cartItem.quantity}</span>}
+                      <div className="text-3xl mb-2">{menuCategories.find((category) => category.id === item.categoryId)?.icon || '🍽️'}</div>
+                      <h4 className="font-medium text-sm text-center line-clamp-2">{item.name}</h4>
+                      <p className="text-sm font-bold text-primary mt-1">
+                        {item.variants?.length ? `${formatPrice(Math.min(...item.variants.map((variant) => variant.price)))}+` : formatPrice(item.price)}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           ) : (
             /* Items inside selected category */
@@ -1114,7 +1138,7 @@ export default function POS() {
       </div>
 
       {/* Right Panel - Cart (desktop only) */}
-      <div className="hidden lg:flex w-96 flex-col rounded-xl border border-border bg-card overflow-hidden">
+      <div className="hidden lg:flex w-[460px] xl:w-[500px] shrink-0 flex-col rounded-xl border border-border bg-card overflow-hidden">
         {cartContent}
       </div>
 
