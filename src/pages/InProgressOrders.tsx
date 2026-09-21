@@ -68,12 +68,24 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
   // Filter pending orders by type, search, and time
   const pendingOrders = useMemo(() => {
     return orders.filter((order) => {
-      // Open/unpaid orders belong here. Use channel for Online and fulfillment for Takeaway.
-      const isOpen = order.paymentStatus ? order.paymentStatus !== 'paid' && order.operationalStatus !== 'completed' : order.status === 'pending';
+      // These pages are active-order queues only. A settled, completed,
+      // cancelled or refunded order must disappear even if legacy workflow
+      // fields disagree with each other.
+      const isClosed =
+        order.status === 'completed' ||
+        order.status === 'cancelled' ||
+        order.status === 'refunded' ||
+        order.paymentStatus === 'paid' ||
+        order.paymentStatus === 'refunded' ||
+        order.operationalStatus === 'completed' ||
+        order.operationalStatus === 'cancelled' ||
+        order.operationalStatus === 'refunded';
+      if (isClosed) return false;
+
       const matchesType = orderType === 'online'
         ? order.orderChannel === 'online' || order.orderType === 'online'
         : order.fulfillmentType === 'takeaway' || order.orderType === 'takeaway';
-      if (!isOpen || !matchesType) return false;
+      if (!matchesType) return false;
       
       // Search filter
       if (searchQuery) {
