@@ -1432,7 +1432,9 @@ export default function POS() {
                 toast.success('Item Less recorded in the audit trail.');
                 setItemLessTarget(null);
                 setItemLessDetails('');
-                if (currentEditingOrderId) loadOrderToCart(currentEditingOrderId);
+                // RestaurantContext already updates the cart/order optimistically.
+                // Do not reload from the previous render here: that stale snapshot
+                // was what made removed items reappear until a manual refresh.
               } catch (error) {
                 toast.error(error instanceof Error ? error.message : 'Failed to record Item Less');
               } finally { setIsItemLessSaving(false); }

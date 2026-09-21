@@ -964,9 +964,65 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     disposition: 'not_prepared' | 'waste' | 'returned' = 'not_prepared',
   ) => {
     if (!navigator.onLine) throw new Error('Item Less requires an online connection.');
-    await createItemLess({ orderItemId, quantityLess: quantity, reasonCode: reason, reasonDetails: details, inventoryDisposition: disposition, sourceDevice: 'POS' });
-    await data.refetch();
-  }, [data.refetch]);
+
+    const order = data.orders.find((candidate) => candidate.items.some((item) => item.id === orderItemId));
+    const savedItem = order?.items.find((item) => item.id === orderItemId);
+    if (!order || !savedItem) throw new Error('Saved item row not found. Reopen the order.');
+    const currentQty = Number(savedItem.finalQuantity ?? savedItem.quantity);
+    if (quantity <= 0 || quantity > currentQty) throw new Error('Invalid Item Less quantity.');
+
+    // Update the visible order and cart immediately. The cashier should never
+    // have to refresh before doing another Item Less on the same order.
+    const nextQty = currentQty - quantity;
+    const previousOrders = data.orders;
+    const previousCart = cart;
+    const amountAffected = quantity * Number(savedItem.unitPrice);
+    data.setOrders((prev: Order[]) => prev.map((candidate) => {
+      if (candidate.id !== order.id) return candidate;
+      const nextItems = candidate.items
+        .map((item) => item.id === orderItemId
+          ? {
+              ...item,
+              quantity: nextQty,
+              finalQuantity: nextQty,
+              lessQuantity: Number(item.lessQuantity || 0) + quantity,
+              total: nextQty * Number(item.unitPrice),
+              itemStatus: nextQty === 0 ? 'cancelled' : 'less',
+            }
+          : item)
+        .filter((item) => Number(item.finalQuantity ?? item.quantity) > 0);
+      const subtotal = Math.max(0, Number(candidate.subtotal) - amountAffected);
+      const discount = candidate.discountType === 'percentage'
+        ? subtotal * Number(candidate.discountValue || 0) / 100
+        : Math.min(Number(candidate.discount || 0), subtotal + Number(candidate.tax || 0));
+      return {
+        ...candidate,
+        items: nextItems,
+        subtotal,
+        discount,
+        total: Math.max(0, subtotal + Number(candidate.tax || 0) - discount),
+      };
+    }));
+    setCart((prev) => prev.flatMap((item) => {
+      if (item.menuItem.id !== savedItem.menuItemId || (item.variant?.id || '') !== (savedItem.variantId || '')) return [item];
+      const updatedQty = Math.max(0, item.quantity - quantity);
+      return updatedQty > 0 ? [{ ...item, quantity: updatedQty }] : [];
+    }));
+
+    try {
+      await createItemLess({ orderItemId, quantityLess: quantity, reasonCode: reason, reasonDetails: details, inventoryDisposition: disposition, sourceDevice: 'POS' });
+      // Reconcile silently in the background; do not block the POS interaction.
+      void fetchOrderWithItems(order.id).then((fresh) => {
+        if (!fresh) return;
+        data.setOrders((prev: Order[]) => prev.map((candidate) => candidate.id === fresh.id ? fresh : candidate));
+      }).catch((error) => console.error('Item Less background reconciliation failed:', error));
+    } catch (error) {
+      // Restore the exact UI snapshot if the server rejects the action.
+      data.setOrders(previousOrders);
+      setCart(previousCart);
+      throw error;
+    }
+  }, [cart, data.orders, data.setOrders, fetchOrderWithItems]);
 
   const cancelOrderAction = useCallback(async (orderId: string) => {
     // ── Online path ──
