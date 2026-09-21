@@ -422,12 +422,12 @@ export default function POS() {
     setIsSettling(true);
     try {
       await settleOrder(completedOrder.id, paymentMethod, completedOrder.tableId);
-      try {
-        await printCustomerInvoice('PAID');
-      } catch {
-        toast.error('Payment completed, but invoice did not print. You can reprint it from Orders.');
-      }
       toast.success('Payment completed and table closed.');
+      // Release the cashier immediately. Printing is best-effort and must never
+      // block settlement when the local printer/bridge is disconnected.
+      void printCustomerInvoice('PAID').catch(() => {
+        toast.info('Payment saved. Printer is not connected, so the invoice was not printed.');
+      });
       setCompletedOrder(null);
       handleBackToOrderType();
     } catch (error) {
