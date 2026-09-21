@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseData } from '@/hooks/useSupabaseData';
 import { useSupabaseActions } from '@/hooks/useSupabaseActions';
 import { addToSyncQueue, cacheTableData, getCachedData, removeQueuedMutationsForOrder } from '@/lib/offlineDb';
-import { createWorkflowOrder, addItemsToWorkflowOrder, makeOrderIdempotencyKey, recordOrderPayment, transitionOrderStatus, createItemLess, type ItemLessReason } from '@/services/orderWorkflow';
+import { createWorkflowOrder, addItemsToWorkflowOrder, makeOrderIdempotencyKey, settleOrderAtomic, createItemLess, type ItemLessReason } from '@/services/orderWorkflow';
 import {
   Ingredient,
   MenuItem,
@@ -920,29 +920,15 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     if (!order) throw new Error('Order not found. Refresh and try again.');
     if (order.paymentStatus === 'paid' || order.status === 'completed') throw new Error('This order is already paid/closed.');
 
-    const amountDue = Number(order.total);
-    // A zero-total order can occur after Item Less removes every billable item.
-    // There is nothing to collect, but the operational order still needs to close.
-    if (amountDue > 0) {
-      await recordOrderPayment({ orderId, amount: amountDue, paymentMethod, idempotencyKey: makeOrderIdempotencyKey(), sourceDevice: 'POS' });
-    }
-
-    let status = order.operationalStatus || 'in_progress';
-    const sequence: Record<string, string | undefined> = {
-      open: 'in_progress',
-      in_progress: 'ready',
-      ready: order.fulfillmentType === 'delivery' ? 'delivered' : order.fulfillmentType === 'takeaway' ? 'picked_up' : 'served',
-      served: 'completed',
-      picked_up: 'completed',
-      delivered: 'completed',
-    };
-    for (let guard = 0; guard < 5 && status !== 'completed'; guard += 1) {
-      const next = sequence[status];
-      if (!next) break;
-      const result = await transitionOrderStatus({ orderId, newStatus: next, sourceDevice: 'POS' });
-      status = result.operational_status;
-    }
-    if (status !== 'completed') throw new Error(`Payment recorded, but order could not close from status: ${status}`);
+    // One server transaction records the outstanding payment, closes the order,
+    // releases any linked table, and writes the audit trail. This replaces the
+    // previous payment + up-to-five status-transition round trips.
+    await settleOrderAtomic({
+      orderId,
+      paymentMethod,
+      idempotencyKey: makeOrderIdempotencyKey(),
+      sourceDevice: 'POS',
+    });
 
     const safeTableId = explicitTableId || order.tableId || undefined;
     data.setOrders((prev: Order[]) => prev.map((o) => o.id === orderId
@@ -953,7 +939,8 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         ? { ...t, status: 'available' as const, currentOrderId: undefined }
         : t));
     }
-    await data.refetch();
+    // Reconcile in the background; never keep the cashier waiting on a full reload.
+    void data.refetch();
   }, [data.orders, data.refetch]);
 
   const itemLessAction = useCallback(async (
