@@ -622,10 +622,36 @@ export default function POS() {
     }
   };
 
+  const renderProductVisual = (item: import('@/types/restaurant').MenuItem) => (
+    <div className="relative h-[92px] w-full overflow-hidden rounded-t-md bg-muted/30">
+      {item.image ? (
+        <img
+          src={item.image}
+          alt={item.name}
+          loading="lazy"
+          className="h-full w-full object-cover transition-transform duration-150 group-hover:scale-[1.03]"
+          onError={(event) => {
+            event.currentTarget.style.display = 'none';
+            const fallback = event.currentTarget.nextElementSibling as HTMLElement | null;
+            if (fallback) fallback.style.display = 'flex';
+          }}
+        />
+      ) : null}
+      <div
+        className={cn(
+          'absolute inset-0 items-center justify-center text-4xl',
+          item.image ? 'hidden' : 'flex'
+        )}
+      >
+        {menuCategories.find((category) => category.id === item.categoryId)?.icon || '🍽️'}
+      </div>
+    </div>
+  );
+
   const cartContent = (
     <>
       {/* Cart Header */}
-      <div className="border-b border-border p-4">
+      <div className="border-b border-border px-3 py-2.5">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">
             {isEditingExistingOrder ? 'Edit Order' : 'Current Order'}
@@ -660,7 +686,7 @@ export default function POS() {
             Add products from the left, then use “Save & Print New Items”. Existing items are not reprinted.
           </p>
         )}
-        <div className="relative mt-3">
+        <div className="relative mt-2">
           <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             aria-label="Customer name"
@@ -673,7 +699,7 @@ export default function POS() {
       </div>
 
       {/* Cart Items */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
         {cart.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <div className="rounded-full bg-muted p-4 mb-4">
@@ -692,7 +718,7 @@ export default function POS() {
               const displayPrice = item.variant ? item.variant.price : item.menuItem.price;
               
               return (
-                <div key={cartKey} className="cart-item">
+                <div key={cartKey} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md border bg-background px-2.5 py-2">
                   <div className="flex-1 min-w-0">
                     <h4 className="font-medium text-sm truncate">{displayName}</h4>
                     <p className="text-sm text-muted-foreground">{formatPrice(displayPrice)} each</p>
@@ -701,7 +727,7 @@ export default function POS() {
                     <Button
                       variant="outline"
                       size="icon"
-                      className="h-8 w-8"
+                      className="h-7 w-7"
                       onClick={() => {
                         if (isEditingExistingOrder) {
                           const order = currentEditingOrderId ? getOrderById(currentEditingOrderId) : undefined;
@@ -723,7 +749,7 @@ export default function POS() {
                     <Button
                       variant="outline"
                       size="icon"
-                      className="h-8 w-8"
+                      className="h-7 w-7"
                       onClick={() => updateCartItemQuantity(item.menuItem.id, item.quantity + 1, item.variant?.id)}
                     >
                       <Plus className="h-3 w-3" />
@@ -731,7 +757,7 @@ export default function POS() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      className="h-7 w-7 text-destructive hover:text-destructive"
                       onClick={() => {
                         if (isEditingExistingOrder) {
                           const order = currentEditingOrderId ? getOrderById(currentEditingOrderId) : undefined;
@@ -754,7 +780,7 @@ export default function POS() {
       </div>
 
       {/* Cart Summary */}
-      <div className="border-t border-border p-4 space-y-4">
+      <div className="shrink-0 border-t border-border px-3 py-2.5 space-y-2">
         <div className="space-y-3">
           <div className="rounded-lg border p-3 space-y-3">
             <div className="flex items-center justify-between">
@@ -767,7 +793,7 @@ export default function POS() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-[120px_1fr] gap-2">
+            <div className="grid grid-cols-[110px_1fr] gap-2">
               <Input type="number" min={0} max={discountType === 'percentage' ? 100 : undefined}
                 value={discountValue || ''} placeholder={discountType === 'percentage' ? '0-100' : 'Amount'}
                 onChange={(e) => setDiscountValue(Math.max(0, discountType === 'percentage' ? Math.min(100, Number(e.target.value) || 0) : Number(e.target.value) || 0))} />
@@ -797,7 +823,7 @@ export default function POS() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <Button
             variant="outline"
             className="w-full"
@@ -861,7 +887,7 @@ export default function POS() {
               </Button>
             </>
           )}
-          <Button className="w-full col-span-2 h-11 font-semibold" onClick={handleCompleteOrder} disabled={!isOnline || isPlacingOrder || (!isEditingExistingOrder && cart.length === 0) || (isEditingExistingOrder && pendingAdditions.length === 0)}>
+          <Button className="w-full col-span-3 h-10 font-semibold" onClick={handleCompleteOrder} disabled={!isOnline || isPlacingOrder || (!isEditingExistingOrder && cart.length === 0) || (isEditingExistingOrder && pendingAdditions.length === 0)}>
             {isPlacingOrder ? 'Saving...' : isEditingExistingOrder ? 'Save & Print New Items' : 'Place Order'}
           </Button>
         </div>
@@ -874,7 +900,7 @@ export default function POS() {
   // POS entry flow: never expose menu/cart before an order type (and table for dine-in) is selected.
   if (!orderType) {
     return (
-      <div className="h-[calc(100vh-7rem)] animate-fade-in p-4 sm:p-6">
+      <div className="h-[calc(100vh-5rem)] animate-fade-in p-4 sm:p-6">
         <div className="mx-auto max-w-5xl">
           <h1 className="text-2xl font-bold mb-2">New Order</h1>
           <p className="text-muted-foreground mb-6">Choose how the customer is ordering.</p>
@@ -896,7 +922,7 @@ export default function POS() {
 
   if (orderType === 'dine-in' && !selectedTableId) {
     return (
-      <div className="h-[calc(100vh-7rem)] animate-fade-in p-4 sm:p-6 overflow-y-auto">
+      <div className="h-[calc(100vh-5rem)] animate-fade-in p-4 sm:p-6 overflow-y-auto">
         <div className="mx-auto max-w-6xl">
           <div className="flex items-center gap-3 mb-6">
             <Button variant="ghost" size="icon" onClick={() => setOrderType(null)}><ArrowLeft className="h-5 w-5" /></Button>
@@ -922,7 +948,7 @@ export default function POS() {
 
   // Main POS Screen
   return (
-    <div className="flex flex-col h-[calc(100vh-7rem)] animate-fade-in relative">
+    <div className="flex flex-col h-[calc(100vh-5rem)] animate-fade-in relative">
       {/* Offline Banner */}
       {(!isOnline || pendingSyncCount > 0) && (
         <div className={`flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium shrink-0 ${
@@ -951,11 +977,11 @@ export default function POS() {
         </div>
       )}
 
-      <div className="flex flex-1 gap-4 lg:gap-6 overflow-hidden">
+      <div className="flex flex-1 gap-3 overflow-hidden min-h-0">
       {/* Left Panel - Menu */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header with Back Button */}
-        <div className="mb-4 flex items-center gap-4">
+        <div className="mb-2 flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={handleBackToOrderType}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
@@ -984,7 +1010,7 @@ export default function POS() {
 
         {/* Fast order controls */}
         {orderType === 'dine-in' && (
-          <div className="mb-3 flex items-center gap-2">
+          <div className="mb-2 flex items-center gap-2">
             <Select value={selectedWaiterId} onValueChange={setSelectedWaiterId}>
               <SelectTrigger className="w-full sm:w-64">
                 <Users className="h-4 w-4 mr-2" />
@@ -1017,10 +1043,10 @@ export default function POS() {
         </div>
 
         {/* Category Grid + Items */}
-        <div className="flex-1 overflow-y-auto pb-20 lg:pb-0">
+        <div className="flex-1 min-h-0 overflow-y-auto pb-4">
           {/* When searching, show flat results */}
           {searchQuery ? (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-5">
               {filteredItems.map((item) => {
                 const cartItem = cart.find((c) => c.menuItem.id === item.id);
                 return (
@@ -1033,23 +1059,21 @@ export default function POS() {
                         addToCart(item);
                       }
                     }}
-                    className={cn('pos-grid-item', cartItem && 'selected')}
+                    className={cn('group relative overflow-hidden rounded-md border bg-card text-left shadow-sm transition hover:border-primary hover:shadow-md', cartItem && 'ring-2 ring-primary')}
                   >
                     {cartItem && (
                       <span className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
                         {cartItem.quantity}
                       </span>
                     )}
-                    <div className="text-2xl mb-2">
-                      {menuCategories.find((c) => c.id === item.categoryId)?.icon || '🍽️'}
-                    </div>
-                    <h4 className="font-medium text-sm text-center line-clamp-2">{item.name}</h4>
+                    {renderProductVisual(item)}
+                    <h4 className="px-2 pt-2 font-semibold text-[13px] leading-4 line-clamp-2 min-h-10">{item.name}</h4>
                     {item.variants && item.variants.length > 0 ? (
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="px-2 pb-2 text-xs font-semibold text-primary">
                         {formatPrice(Math.min(...item.variants.map(v => v.price)))} - {formatPrice(Math.max(...item.variants.map(v => v.price)))}
                       </p>
                     ) : (
-                      <p className="text-sm font-bold text-primary mt-1">{formatPrice(item.price)}</p>
+                      <p className="px-2 pb-2 text-sm font-bold text-primary">{formatPrice(item.price)}</p>
                     )}
                   </button>
                 );
@@ -1057,7 +1081,7 @@ export default function POS() {
             </div>
           ) : !selectedCategory ? (
             <div className="space-y-3">
-              <div className="flex gap-2 overflow-x-auto pb-2">
+              <div className="flex gap-1.5 overflow-x-auto pb-1.5 scrollbar-thin">
                 <Button size="sm" className="shrink-0">All Products</Button>
                 {menuCategories.map((category) => (
                   <Button key={category.id} size="sm" variant="outline" className="shrink-0"
@@ -1066,17 +1090,17 @@ export default function POS() {
                   </Button>
                 ))}
               </div>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-5">
                 {filteredItems.map((item) => {
                   const cartItem = cart.find((entry) => entry.menuItem.id === item.id);
                   return (
                     <button key={item.id}
                       onClick={() => item.variants?.length ? setVariantPickerItem(item) : addToCart(item)}
-                      className={cn('pos-grid-item min-h-28', cartItem && 'selected')}>
+                      className={cn('group relative overflow-hidden rounded-md border bg-card text-left shadow-sm transition hover:border-primary hover:shadow-md', cartItem && 'ring-2 ring-primary')}>
                       {cartItem && <span className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{cartItem.quantity}</span>}
-                      <div className="text-3xl mb-2">{menuCategories.find((category) => category.id === item.categoryId)?.icon || '🍽️'}</div>
-                      <h4 className="font-medium text-sm text-center line-clamp-2">{item.name}</h4>
-                      <p className="text-sm font-bold text-primary mt-1">
+                      {renderProductVisual(item)}
+                      <h4 className="px-2 pt-2 font-semibold text-[13px] leading-4 line-clamp-2 min-h-10">{item.name}</h4>
+                      <p className="px-2 pb-2 text-sm font-bold text-primary">
                         {item.variants?.length ? `${formatPrice(Math.min(...item.variants.map((variant) => variant.price)))}+` : formatPrice(item.price)}
                       </p>
                     </button>
@@ -1097,7 +1121,7 @@ export default function POS() {
                   {menuCategories.find((c) => c.id === selectedCategory)?.name}
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-5">
                 {filteredItems.map((item) => {
                   const cartItem = cart.find((c) => c.menuItem.id === item.id);
                   return (
@@ -1110,7 +1134,7 @@ export default function POS() {
                           addToCart(item);
                         }
                       }}
-                      className={cn('pos-grid-item', cartItem && 'selected')}
+                      className={cn('group relative overflow-hidden rounded-md border bg-card text-left shadow-sm transition hover:border-primary hover:shadow-md', cartItem && 'ring-2 ring-primary')}
                     >
                       {cartItem && (
                         <span className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
@@ -1120,13 +1144,13 @@ export default function POS() {
                       <div className="text-2xl mb-2">
                         {menuCategories.find((c) => c.id === item.categoryId)?.icon || '🍽️'}
                       </div>
-                      <h4 className="font-medium text-sm text-center line-clamp-2">{item.name}</h4>
+                      <h4 className="px-2 pt-2 font-semibold text-[13px] leading-4 line-clamp-2 min-h-10">{item.name}</h4>
                       {item.variants && item.variants.length > 0 ? (
-                        <p className="text-xs text-muted-foreground mt-1">
+                        <p className="px-2 pb-2 text-xs font-semibold text-primary">
                           {formatPrice(Math.min(...item.variants.map(v => v.price)))} - {formatPrice(Math.max(...item.variants.map(v => v.price)))}
                         </p>
                       ) : (
-                        <p className="text-sm font-bold text-primary mt-1">{formatPrice(item.price)}</p>
+                        <p className="px-2 pb-2 text-sm font-bold text-primary">{formatPrice(item.price)}</p>
                       )}
                     </button>
                   );
@@ -1138,7 +1162,7 @@ export default function POS() {
       </div>
 
       {/* Right Panel - Cart (desktop only) */}
-      <div className="hidden lg:flex w-[460px] xl:w-[500px] shrink-0 flex-col rounded-xl border border-border bg-card overflow-hidden">
+      <div className="hidden lg:flex w-[42%] min-w-[430px] max-w-[570px] shrink-0 flex-col rounded-lg border border-border bg-card overflow-hidden min-h-0">
         {cartContent}
       </div>
 
