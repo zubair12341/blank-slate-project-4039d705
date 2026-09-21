@@ -741,6 +741,7 @@ export default function POS() {
               const match = customers.find((entry) => entry.name.toLowerCase() === value.trim().toLowerCase());
               setSelectedCustomerId(match?.id || null);
             }}
+            onBlur={() => { if (currentEditingOrderId) void persistCustomerForOrder(currentEditingOrderId).catch(() => toast.error('Customer could not be saved.')); }}
             className="h-9 pl-9"
           />
           <datalist id="pos-customer-list">
@@ -907,6 +908,7 @@ export default function POS() {
                     toast.error('Order details are not available yet.');
                     return;
                   }
+                  try { await persistCustomerForOrder(currentEditingOrderId); } catch { toast.error('Customer could not be saved.'); return; }
                   const lines = [
                     settings.invoice?.title || settings.name,
                     settings.address,
