@@ -18,6 +18,7 @@ import {
   ShoppingBag,
   Calendar,
   DollarSign,
+  WalletCards,
 } from 'lucide-react';
 import { useRestaurant } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -49,6 +50,7 @@ const navigation = [
   { name: 'Direct Sales', href: '/direct-sales', icon: DollarSign, permission: 'store-stock' },
   { name: 'Stock Report', href: '/stock-report', icon: BarChart3, permission: 'store-stock' },
   { name: 'Orders', href: '/orders', icon: FileText, permission: 'orders' },
+  { name: 'Customer Ledger', href: '/customer-ledger', icon: WalletCards, permission: 'orders' },
   { name: 'Daily Costs', href: '/daily-costs', icon: Banknote, permission: 'daily-costs' },
   { name: 'Daily Report', href: '/daily-report', icon: Calendar, permission: 'reports' },
   { name: 'Reports', href: '/reports', icon: BarChart3, permission: 'reports' },

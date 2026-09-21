@@ -14,6 +14,77 @@ export type Database = {
   }
   public: {
     Tables: {
+      customer_receipts: {
+        Row: {
+          amount: number
+          customer_id: string
+          id: string
+          notes: string | null
+          payment_method: string
+          received_at: string
+          received_by: string | null
+          reference: string | null
+        }
+        Insert: {
+          amount: number
+          customer_id: string
+          id?: string
+          notes?: string | null
+          payment_method?: string
+          received_at?: string
+          received_by?: string | null
+          reference?: string | null
+        }
+        Update: {
+          amount?: number
+          customer_id?: string
+          id?: string
+          notes?: string | null
+          payment_method?: string
+          received_at?: string
+          received_by?: string | null
+          reference?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_receipts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customers: {
+        Row: {
+          address: string | null
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       expenses: {
         Row: {
           amount: number
@@ -568,6 +639,7 @@ export type Database = {
           completed_at: string | null
           created_at: string
           created_by: string | null
+          customer_id: string | null
           customer_name: string | null
           delivered_at: string | null
           discount: number
@@ -601,6 +673,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
+          customer_id?: string | null
           customer_name?: string | null
           delivered_at?: string | null
           discount?: number
@@ -634,6 +707,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
+          customer_id?: string | null
           customer_name?: string | null
           delivered_at?: string | null
           discount?: number
@@ -663,7 +737,15 @@ export type Database = {
           waiter_id?: string | null
           waiter_name?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
