@@ -1141,9 +1141,7 @@ export default function POS() {
                           {cartItem.quantity}
                         </span>
                       )}
-                      <div className="text-2xl mb-2">
-                        {menuCategories.find((c) => c.id === item.categoryId)?.icon || '🍽️'}
-                      </div>
+                      {renderProductVisual(item)}
                       <h4 className="px-2 pt-2 font-semibold text-[13px] leading-4 line-clamp-2 min-h-10">{item.name}</h4>
                       {item.variants && item.variants.length > 0 ? (
                         <p className="px-2 pb-2 text-xs font-semibold text-primary">
