@@ -120,6 +120,23 @@ export async function removeSyncQueueItem(id: string) {
   await db.delete('sync_queue', id);
 }
 
+// Remove stale legacy offline mutations that can resurrect an order after it
+// has been authoritatively cancelled online.
+export async function removeQueuedMutationsForOrder(orderId: string) {
+  const db = await getDb();
+  const queue = await db.getAll('sync_queue');
+  const tx = db.transaction('sync_queue', 'readwrite');
+  for (const item of queue) {
+    const data = item.data || {};
+    const targetsOrder =
+      (item.table === 'orders' && data.id === orderId) ||
+      (item.table === 'order_items' && (data.order_id === orderId || data.orderId === orderId)) ||
+      (item.table === 'restaurant_tables' && (data.current_order_id === orderId || data.currentOrderId === orderId));
+    if (targetsOrder) await tx.store.delete(item.id);
+  }
+  await tx.done;
+}
+
 export async function updateSyncQueueItem(item: SyncQueueItem) {
   const db = await getDb();
   await db.put('sync_queue', item);
