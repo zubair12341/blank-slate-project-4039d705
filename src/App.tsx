@@ -26,6 +26,7 @@ import StockReport from "./pages/StockReport";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
+import CustomerLedger from "./pages/CustomerLedger";
 
 const queryClient = new QueryClient();
 
@@ -65,6 +66,7 @@ const App = () => (
                 <Route path="/direct-sales" element={<DirectStockSales />} />
                 <Route path="/stock-report" element={<StockReport />} />
                 <Route path="/orders" element={<Orders />} />
+                <Route path="/customer-ledger" element={<CustomerLedger />} />
                 <Route path="/online-orders" element={<OnlineOrders />} />
                 <Route path="/takeaway-orders" element={<TakeawayOrders />} />
                 <Route path="/daily-costs" element={<DailyCosts />} />
