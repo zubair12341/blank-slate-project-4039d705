@@ -58,7 +58,7 @@ import { Order, DiscountType } from '@/types/restaurant';
 import { playKitchenNotificationSound } from '@/hooks/usePrintWithImages';
 import { createPrintJobId, sendLocalPrintJob } from '@/services/localPrintBridge';
 
-type OrderTypeSelection = 'dine-in' | 'takeaway' | 'delivery' | 'online' | null;
+type OrderTypeSelection = 'dine-in' | 'takeaway' | 'online' | null;
 
 export default function POS() {
   const location = useLocation();
@@ -858,9 +858,6 @@ export default function POS() {
             </Button>
             <Button variant="outline" className="h-28 text-lg flex-col gap-2" onClick={() => setOrderType('takeaway')}>
               <ShoppingBag className="h-7 w-7" /> Takeaway
-            </Button>
-            <Button variant="outline" className="h-28 text-lg flex-col gap-2" onClick={() => setOrderType('delivery')}>
-              <Truck className="h-7 w-7" /> Delivery
             </Button>
             <Button variant="outline" className="h-28 text-lg flex-col gap-2" onClick={() => setOrderType('online')}>
               <Wifi className="h-7 w-7" /> Online
