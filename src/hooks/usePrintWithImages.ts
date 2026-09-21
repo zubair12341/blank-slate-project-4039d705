@@ -49,7 +49,7 @@ const applyThermalPrintSizing = (doc: Document): void => {
 };
 
 export function printWithImages(_html: string, onPrinted?: () => void): void {
-  // Browser printing is deliberately disabled for the POS. window.print() always
+  // Native browser printing is deliberately disabled for the POS and always
   // opens browser UI in normal Chrome and must never be used for restaurant jobs.
   // All KOT/receipt printing goes through localPrintBridge -> Windows spooler.
   console.error('Legacy browser print blocked: use localPrintBridge instead.');
