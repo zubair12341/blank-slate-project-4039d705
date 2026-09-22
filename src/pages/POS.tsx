@@ -1014,17 +1014,59 @@ export default function POS() {
             <Button variant="ghost" size="icon" onClick={() => setOrderType(null)}><ArrowLeft className="h-5 w-5" /></Button>
             <div><h1 className="text-2xl font-bold">Select Table</h1><p className="text-muted-foreground">Available and occupied tables are shown below.</p></div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
-            {tables.map((table) => (
-              <button key={table.id} onClick={() => handleTableSelect(table.id)}
-                className={cn('rounded-xl border p-5 text-left transition hover:border-primary hover:shadow-sm',
-                  table.status === 'occupied' ? 'border-orange-300 bg-orange-50' : 'bg-card')}>
-                <div className="text-xl font-bold">Table {table.number}</div>
-                <div className={cn('mt-2 text-sm font-medium', table.status === 'occupied' ? 'text-orange-700' : 'text-green-700')}>
-                  {table.status === 'occupied' ? 'Occupied — Open Order' : 'Available'}
-                </div>
-              </button>
-            ))}
+          <div className="mb-5 flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full border bg-card px-3 py-1.5">All {tables.length}</span>
+            <span className="rounded-full border bg-green-50 px-3 py-1.5 text-green-700">Available {tables.filter((t) => t.status !== 'occupied').length}</span>
+            <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-orange-700">Occupied {tables.filter((t) => t.status === 'occupied').length}</span>
+          </div>
+          <div className="space-y-7">
+            {[
+              { key: 'ground', label: 'Ground Floor' },
+              { key: 'first', label: 'First Floor' },
+              { key: 'family', label: 'Family / Upper Floor' },
+            ].map((floor) => {
+              const floorTables = tables.filter((table) => table.floor === floor.key);
+              if (floorTables.length === 0) return null;
+              return (
+                <section key={floor.key}>
+                  <h2 className="mb-3 text-base font-semibold">{floor.label}</h2>
+                  <div className="flex flex-wrap gap-x-5 gap-y-6">
+                    {floorTables.map((table) => (
+                      <div key={table.id} className="flex w-28 flex-col items-center">
+                        <button
+                          onClick={() => handleTableSelect(table.id)}
+                          className={cn(
+                            'flex h-24 w-24 flex-col items-center justify-center rounded-full border-2 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md',
+                            table.status === 'occupied'
+                              ? 'border-orange-300 bg-orange-100 text-orange-900'
+                              : 'border-border bg-muted/40 text-foreground hover:border-primary'
+                          )}
+                        >
+                          <span className="text-base font-bold">Table {table.number}</span>
+                          <span className="mt-1 text-[11px] font-medium">{table.status === 'occupied' ? 'Occupied' : 'Available'}</span>
+                        </button>
+                        {table.status === 'occupied' && table.currentOrderId ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="mt-1 h-7 w-7"
+                            title="Print unpaid bill"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              const order = getOrderById(table.currentOrderId!);
+                              if (!order) { toast.error('Order details are not available yet.'); return; }
+                              void printOrderInvoice(order, 'UNPAID');
+                            }}
+                          >
+                            <Printer className="h-4 w-4" />
+                          </Button>
+                        ) : <div className="h-8" />}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
           </div>
           {tables.length === 0 && <div className="rounded-lg border p-8 text-center text-muted-foreground">No restaurant tables are configured.</div>}
         </div>
