@@ -58,6 +58,7 @@ import { Order, DiscountType } from '@/types/restaurant';
 import { playKitchenNotificationSound } from '@/hooks/usePrintWithImages';
 import { createPrintJobId, sendLocalPrintJob } from '@/services/localPrintBridge';
 import { supabase } from '@/integrations/supabase/client';
+import { parkOrderAsUnpaid, reassignDineInOrder, saveOrderCustomer } from '@/services/orderWorkflow';
 
 type OrderTypeSelection = 'dine-in' | 'takeaway' | 'online' | null;
 
@@ -83,6 +84,7 @@ export default function POS() {
     cancelOrder,
     settleOrder,
     itemLess,
+    refetch,
   } = useRestaurant();
 
   const isMobile = useIsMobile();
@@ -112,6 +114,8 @@ export default function POS() {
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [isSettling, setIsSettling] = useState(false);
   const [isPrintingKitchen, setIsPrintingKitchen] = useState(false);
+  const [isReassigning, setIsReassigning] = useState(false);
+  const [isParkingUnpaid, setIsParkingUnpaid] = useState(false);
   const [itemLessTarget, setItemLessTarget] = useState<{ id: string; name: string; max: number } | null>(null);
   const [itemLessQty, setItemLessQty] = useState(1);
   const [itemLessReason, setItemLessReason] = useState<'customer_changed_mind' | 'wrong_item_entered' | 'item_unavailable' | 'duplicate_entry' | 'kitchen_issue' | 'customer_complaint' | 'other'>('customer_changed_mind');
@@ -131,22 +135,33 @@ export default function POS() {
 
   const persistCustomerForOrder = async (orderId: string) => {
     const name = customerName.trim();
-    if (!name) {
-      await supabase.from('orders').update({ customer_name: null, customer_id: null } as any).eq('id', orderId);
-      setSelectedCustomerId(null);
-      return null;
+    if (!name) return null;
+    const saved = await saveOrderCustomer(orderId, name);
+    setSelectedCustomerId(saved.customer_id);
+    setCustomers((prev) => prev.some((entry) => entry.id === saved.customer_id)
+      ? prev
+      : [...prev, { id: saved.customer_id, name: saved.customer_name }].sort((a, b) => a.name.localeCompare(b.name)));
+    return saved;
+  };
+
+  const handleReassignExistingOrder = async (nextTableId: string, nextWaiterId: string) => {
+    if (!currentEditingOrderId || orderType !== 'dine-in') return;
+    if (!nextTableId || !nextWaiterId) {
+      toast.error('Table and waiter are both required.');
+      return;
     }
-    let customer = customers.find((entry) => entry.name.trim().toLowerCase() === name.toLowerCase());
-    if (!customer) {
-      const { data, error } = await supabase.from('customers' as any).insert({ name }).select('id,name,phone').single();
-      if (error) throw error;
-      customer = data as any;
-      setCustomers((prev) => [...prev, customer!].sort((a, b) => a.name.localeCompare(b.name)));
+    setIsReassigning(true);
+    try {
+      await reassignDineInOrder({ orderId: currentEditingOrderId, tableId: nextTableId, waiterId: nextWaiterId });
+      setSelectedTableId(nextTableId);
+      setSelectedWaiterId(nextWaiterId);
+      await refetch();
+      toast.success('Table / waiter updated.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not change table / waiter.');
+    } finally {
+      setIsReassigning(false);
     }
-    setSelectedCustomerId(customer.id);
-    const { error } = await supabase.from('orders').update({ customer_name: customer.name, customer_id: customer.id } as any).eq('id', orderId);
-    if (error) throw error;
-    return customer;
   };
 
   // Queue Edit links carry the order id. Hydrate the order directly instead of
@@ -314,6 +329,10 @@ export default function POS() {
     }
     
     if (orderType === 'dine-in') {
+      if (!selectedWaiterId) {
+        toast.error('Please select a waiter. Waiter is required for dine-in orders.');
+        return;
+      }
       if (!selectedTableId) {
         toast.error('Please select a table before placing the order.');
         return;
@@ -620,29 +639,28 @@ export default function POS() {
     }
   };
 
-  const printCustomerInvoice = async (billStatus: 'UNPAID' | 'PAID' = 'UNPAID') => {
-    if (!completedOrder) return;
+  const printOrderInvoice = async (order: Order, billStatus: 'UNPAID' | 'PAID' = 'UNPAID') => {
     const lines = [
       settings.invoice?.title || settings.name,
       settings.address,
       `Tel: ${settings.phone}`,
       '================================',
-      `Order: ${completedOrder.orderNumber}`,
+      `Order: ${order.orderNumber}`,
       `Status: ${billStatus}`,
-      new Date(completedOrder.createdAt).toLocaleString('en-PK'),
-      `Type: ${completedOrder.orderType.toUpperCase()}`,
-      completedOrder.tableNumber ? `Table: #${completedOrder.tableNumber}` : '',
-      completedOrder.waiterName ? `Waiter: ${completedOrder.waiterName}` : '',
-      completedOrder.customerName ? `Customer: ${completedOrder.customerName}` : '',
+      new Date(order.createdAt).toLocaleString('en-PK'),
+      `Type: ${order.orderType.toUpperCase()}`,
+      order.tableNumber ? `Table: #${order.tableNumber}` : '',
+      order.waiterName ? `Waiter: ${order.waiterName}` : '',
+      order.customerName ? `Customer: ${order.customerName}` : '',
       '--------------------------------',
-      ...completedOrder.items.map((item) =>
+      ...order.items.map((item) =>
         `${item.quantity}x ${item.menuItemName}  ${settings.currencySymbol} ${item.total.toLocaleString()}`
       ),
       '--------------------------------',
-      `Subtotal: ${settings.currencySymbol} ${completedOrder.subtotal.toLocaleString()}`,
-      gstEnabled ? `GST: ${settings.currencySymbol} ${completedOrder.tax.toLocaleString()}` : '',
-      completedOrder.discount > 0 ? `Discount: -${settings.currencySymbol} ${completedOrder.discount.toLocaleString()}` : '',
-      `TOTAL: ${settings.currencySymbol} ${completedOrder.total.toLocaleString()}`,
+      `Subtotal: ${settings.currencySymbol} ${order.subtotal.toLocaleString()}`,
+      gstEnabled ? `GST: ${settings.currencySymbol} ${order.tax.toLocaleString()}` : '',
+      order.discount > 0 ? `Discount: -${settings.currencySymbol} ${order.discount.toLocaleString()}` : '',
+      `TOTAL: ${settings.currencySymbol} ${order.total.toLocaleString()}`,
       billStatus === 'PAID' ? `Payment: ${paymentMethod.toUpperCase()}` : 'Payment: UNPAID',
       '================================',
       settings.invoice?.footer || 'Thank you for dining with us!',
@@ -661,6 +679,38 @@ export default function POS() {
       toast.error(error instanceof Error
         ? `Silent print failed: ${error.message}. Start/check the Local Print Bridge in Settings → Printing.`
         : 'Silent print failed. Check the Local Print Bridge.');
+    }
+  };
+
+  const printCustomerInvoice = async (billStatus: 'UNPAID' | 'PAID' = 'UNPAID') => {
+    if (!completedOrder) return;
+    await printOrderInvoice(completedOrder, billStatus);
+  };
+
+  const handleParkUnpaidBill = async () => {
+    if (!currentEditingOrderId || isParkingUnpaid) return;
+    const name = customerName.trim();
+    if (!name) {
+      toast.error('Customer name is required before moving a bill to Unpaid.');
+      return;
+    }
+    const existing = getOrderById(currentEditingOrderId);
+    if (!existing) {
+      toast.error('Order details are not available yet.');
+      return;
+    }
+    setIsParkingUnpaid(true);
+    try {
+      const saved = await parkOrderAsUnpaid(currentEditingOrderId, name);
+      const printable = { ...existing, customerName: saved.customer_name };
+      await refetch();
+      toast.success('Bill moved to Unpaid and table is now available.');
+      void printOrderInvoice(printable, 'UNPAID').catch(() => toast.info('Unpaid bill saved. Printer is not connected.'));
+      handleBackToOrderType();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not move bill to Unpaid.');
+    } finally {
+      setIsParkingUnpaid(false);
     }
   };
 
@@ -902,42 +952,11 @@ export default function POS() {
                 variant="outline"
                 size="sm"
                 className="h-8 px-2 text-xs"
-                onClick={async () => {
-                  const existing = getOrderById(currentEditingOrderId);
-                  if (!existing) {
-                    toast.error('Order details are not available yet.');
-                    return;
-                  }
-                  try { await persistCustomerForOrder(currentEditingOrderId); } catch { toast.error('Customer could not be saved.'); return; }
-                  const lines = [
-                    settings.invoice?.title || settings.name,
-                    settings.address,
-                    `Tel: ${settings.phone}`,
-                    '================================',
-                    `Order: ${existing.orderNumber}`,
-                    'Status: UNPAID',
-                    `Type: ${existing.orderType.toUpperCase()}`,
-                    existing.tableNumber ? `Table: #${existing.tableNumber}` : '',
-                    existing.waiterName ? `Waiter: ${existing.waiterName}` : '',
-                    '--------------------------------',
-                    ...existing.items.map((item) => `${item.quantity}x ${item.menuItemName}  ${settings.currencySymbol} ${item.total.toLocaleString()}`),
-                    '--------------------------------',
-                    `TOTAL: ${settings.currencySymbol} ${existing.total.toLocaleString()}`,
-                    'Payment: UNPAID',
-                    '================================',
-                    settings.invoice?.footer || 'Thank you for dining with us!',
-                    '', '',
-                  ].filter(Boolean);
-                  try {
-                    await sendLocalPrintJob({ jobId: createPrintJobId(), type: 'CUSTOMER_RECEIPT', content: lines.join('\n') });
-                    toast.success('Unpaid bill printed silently.');
-                  } catch (error) {
-                    toast.warning('Bill remains UNPAID. Local printer is unavailable; check Settings → Printing.');
-                  }
-                }}
+                onClick={() => void handleParkUnpaidBill()}
+                disabled={isParkingUnpaid}
               >
                 <Printer className="h-4 w-4 mr-2" />
-                Unpaid Bill
+                {isParkingUnpaid ? 'Saving...' : 'Unpaid Bill'}
               </Button>
               <Button
                 variant="secondary"
@@ -995,17 +1014,59 @@ export default function POS() {
             <Button variant="ghost" size="icon" onClick={() => setOrderType(null)}><ArrowLeft className="h-5 w-5" /></Button>
             <div><h1 className="text-2xl font-bold">Select Table</h1><p className="text-muted-foreground">Available and occupied tables are shown below.</p></div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
-            {tables.map((table) => (
-              <button key={table.id} onClick={() => handleTableSelect(table.id)}
-                className={cn('rounded-xl border p-5 text-left transition hover:border-primary hover:shadow-sm',
-                  table.status === 'occupied' ? 'border-orange-300 bg-orange-50' : 'bg-card')}>
-                <div className="text-xl font-bold">Table {table.number}</div>
-                <div className={cn('mt-2 text-sm font-medium', table.status === 'occupied' ? 'text-orange-700' : 'text-green-700')}>
-                  {table.status === 'occupied' ? 'Occupied — Open Order' : 'Available'}
-                </div>
-              </button>
-            ))}
+          <div className="mb-5 flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full border bg-card px-3 py-1.5">All {tables.length}</span>
+            <span className="rounded-full border bg-green-50 px-3 py-1.5 text-green-700">Available {tables.filter((t) => t.status !== 'occupied').length}</span>
+            <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-orange-700">Occupied {tables.filter((t) => t.status === 'occupied').length}</span>
+          </div>
+          <div className="space-y-7">
+            {[
+              { key: 'ground', label: 'Ground Floor' },
+              { key: 'first', label: 'First Floor' },
+              { key: 'family', label: 'Family / Upper Floor' },
+            ].map((floor) => {
+              const floorTables = tables.filter((table) => table.floor === floor.key);
+              if (floorTables.length === 0) return null;
+              return (
+                <section key={floor.key}>
+                  <h2 className="mb-3 text-base font-semibold">{floor.label}</h2>
+                  <div className="flex flex-wrap gap-x-5 gap-y-6">
+                    {floorTables.map((table) => (
+                      <div key={table.id} className="flex w-28 flex-col items-center">
+                        <button
+                          onClick={() => handleTableSelect(table.id)}
+                          className={cn(
+                            'flex h-24 w-24 flex-col items-center justify-center rounded-full border-2 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md',
+                            table.status === 'occupied'
+                              ? 'border-orange-300 bg-orange-100 text-orange-900'
+                              : 'border-border bg-muted/40 text-foreground hover:border-primary'
+                          )}
+                        >
+                          <span className="text-base font-bold">Table {table.number}</span>
+                          <span className="mt-1 text-[11px] font-medium">{table.status === 'occupied' ? 'Occupied' : 'Available'}</span>
+                        </button>
+                        {table.status === 'occupied' && table.currentOrderId ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="mt-1 h-7 w-7"
+                            title="Print unpaid bill"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              const order = getOrderById(table.currentOrderId!);
+                              if (!order) { toast.error('Order details are not available yet.'); return; }
+                              void printOrderInvoice(order, 'UNPAID');
+                            }}
+                          >
+                            <Printer className="h-4 w-4" />
+                          </Button>
+                        ) : <div className="h-8" />}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
           </div>
           {tables.length === 0 && <div className="rounded-lg border p-8 text-center text-muted-foreground">No restaurant tables are configured.</div>}
         </div>
@@ -1078,21 +1139,37 @@ export default function POS() {
         {/* Fast order controls */}
         {orderType === 'dine-in' && (
           <div className="mb-2 flex items-center gap-2">
-            <Select value={selectedWaiterId} onValueChange={setSelectedWaiterId}>
-              <SelectTrigger className="w-full sm:w-64">
+            <Select value={selectedWaiterId} onValueChange={(value) => {
+              if (isEditingExistingOrder && selectedTableId) void handleReassignExistingOrder(selectedTableId, value);
+              else setSelectedWaiterId(value);
+            }} disabled={isReassigning}>
+              <SelectTrigger className="w-full sm:w-56">
                 <Users className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="Select Waiter" />
+                <SelectValue placeholder="Select Waiter *" />
               </SelectTrigger>
               <SelectContent>
-                {waiters
-                  .filter((w) => w.isActive)
-                  .map((waiter) => (
-                    <SelectItem key={waiter.id} value={waiter.id}>
-                      {waiter.name}
-                    </SelectItem>
-                  ))}
+                {waiters.filter((w) => w.isActive).map((waiter) => (
+                  <SelectItem key={waiter.id} value={waiter.id}>{waiter.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            {isEditingExistingOrder && (
+              <Select value={selectedTableId || ''} onValueChange={(value) => {
+                if (!selectedWaiterId) { toast.error('Select waiter first.'); return; }
+                void handleReassignExistingOrder(value, selectedWaiterId);
+              }} disabled={isReassigning}>
+                <SelectTrigger className="w-full sm:w-48">
+                  <UtensilsCrossed className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Change Table" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tables.filter((table) => table.id === selectedTableId || (!table.currentOrderId && table.status !== 'occupied')).map((table) => (
+                    <SelectItem key={table.id} value={table.id}>Table {table.number}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <span className="text-xs font-medium text-destructive">Waiter required</span>
           </div>
         )}
 
@@ -1227,7 +1304,7 @@ export default function POS() {
       </div>
 
       {/* Right Panel - Cart (desktop only) */}
-      <div className="hidden lg:flex w-[42%] min-w-[430px] max-w-[570px] shrink-0 flex-col rounded-lg border border-border bg-card overflow-hidden min-h-0">
+      <div className="hidden lg:flex w-[34%] min-w-[360px] max-w-[470px] shrink-0 flex-col rounded-lg border border-border bg-card overflow-hidden min-h-0">
         {cartContent}
       </div>
 
@@ -1447,10 +1524,10 @@ export default function POS() {
               </p>
             </div>
             {completedOrder?.tableNumber && (
-              <p className="text-muted-foreground">Table #{completedOrder.tableNumber}</p>
+              <p className="text-muted-foreground">Table #{order.tableNumber}</p>
             )}
             {completedOrder?.waiterName && (
-              <p className="text-muted-foreground">Waiter: {completedOrder.waiterName}</p>
+              <p className="text-muted-foreground">Waiter: {order.waiterName}</p>
             )}
             {completedOrder?.orderType !== 'dine-in' && (
               <p className="text-sm text-muted-foreground bg-yellow-50 p-2 rounded-lg">

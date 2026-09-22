@@ -21,6 +21,7 @@ export default function Orders() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [orderTypeTab, setOrderTypeTab] = useState<'all' | 'dine-in' | 'takeaway' | 'online'>('all');
+  const [paymentView, setPaymentView] = useState<'all' | 'unpaid'>('all');
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -40,13 +41,14 @@ export default function Orders() {
         (order.customerName?.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (order.waiterName?.toLowerCase().includes(searchQuery.toLowerCase()));
       const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+      const matchesPayment = paymentView === 'all' || order.paymentStatus === 'unpaid';
       const matchesType = orderTypeTab === 'all' ||
         (orderTypeTab === 'online'
           ? order.orderChannel === 'online' || order.orderType === 'online'
           : order.orderType === orderTypeTab);
-      return matchesSearch && matchesStatus && matchesType;
+      return matchesSearch && matchesStatus && matchesType && matchesPayment;
     }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [orders, searchQuery, statusFilter, orderTypeTab]);
+  }, [orders, searchQuery, statusFilter, orderTypeTab, paymentView]);
 
   // Paginated orders
   const totalPages = Math.ceil(filteredOrders.length / pageSize);
@@ -215,6 +217,18 @@ export default function Orders() {
         </Button>
       </div>
 
+      <div className="flex items-center gap-2">
+        <Button variant={paymentView === 'all' ? 'default' : 'outline'} onClick={() => { setPaymentView('all'); setCurrentPage(1); }}>
+          All Orders
+        </Button>
+        <Button variant={paymentView === 'unpaid' ? 'default' : 'outline'} onClick={() => { setPaymentView('unpaid'); setCurrentPage(1); }} className="gap-2">
+          Unpaid Bills
+          <span className="rounded-full bg-background/80 px-2 py-0.5 text-xs text-foreground">
+            {orders.filter((order) => order.paymentStatus === 'unpaid').length}
+          </span>
+        </Button>
+      </div>
+
       {/* Order Type Tabs */}
       <Tabs value={orderTypeTab} onValueChange={(v) => { setOrderTypeTab(v as any); handleFilterChange(); }} className="w-full">
         <TabsList className="grid w-full grid-cols-4 max-w-lg">
@@ -312,7 +326,7 @@ export default function Orders() {
                 </td>
                 <td>{order.items.length} items</td>
                 <td className="font-semibold">{formatPrice(order.total)}</td>
-                <td className="capitalize">{order.paymentMethod}</td>
+                <td><span className={order.paymentStatus === 'unpaid' ? 'badge-warning' : order.paymentStatus === 'paid' ? 'badge-success' : 'capitalize'}>{order.paymentStatus || order.paymentMethod}</span></td>
                 <td>
                   <span className={getStatusColor(order.status)}>{order.status}</span>
                 </td>
