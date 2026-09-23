@@ -1524,10 +1524,10 @@ export default function POS() {
               </p>
             </div>
             {completedOrder?.tableNumber && (
-              <p className="text-muted-foreground">Table #{order.tableNumber}</p>
+              <p className="text-muted-foreground">Table #{completedOrder.tableNumber}</p>
             )}
             {completedOrder?.waiterName && (
-              <p className="text-muted-foreground">Waiter: {order.waiterName}</p>
+              <p className="text-muted-foreground">Waiter: {completedOrder.waiterName}</p>
             )}
             {completedOrder?.orderType !== 'dine-in' && (
               <p className="text-sm text-muted-foreground bg-yellow-50 p-2 rounded-lg">
