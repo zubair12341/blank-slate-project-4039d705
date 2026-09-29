@@ -19,6 +19,7 @@ import {
   Calendar,
   DollarSign,
   WalletCards,
+  ReceiptText,
 } from 'lucide-react';
 import { useRestaurant } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -40,6 +41,7 @@ import { Button } from '@/components/ui/button';
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard, permission: 'dashboard' },
   { name: 'POS', href: '/pos', icon: ShoppingCart, permission: 'pos' },
+  { name: 'Order Queue', href: '/order-queue', icon: ReceiptText, permission: 'orders' },
   { name: 'Online Orders', href: '/online-orders', icon: Wifi, permission: 'orders' },
   { name: 'Takeaway Orders', href: '/takeaway-orders', icon: ShoppingBag, permission: 'orders' },
   { name: 'Food Items', href: '/food-items', icon: UtensilsCrossed, permission: 'food-items' },
