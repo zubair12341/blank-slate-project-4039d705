@@ -3,7 +3,7 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-export type AppRole = 'admin' | 'manager' | 'pos_user';
+export type AppRole = 'admin' | 'manager' | 'pos_user' | 'waiter';
 
 interface AuthContextType {
   user: User | null;
@@ -24,6 +24,9 @@ const rolePermissions: Record<AppRole, string[]> = {
   admin: ['dashboard', 'pos', 'food-items', 'ingredients', 'recipes', 'store-stock', 'kitchen-stock', 'orders', 'reports', 'settings', 'staff', 'daily-costs'],
   manager: ['dashboard', 'pos', 'food-items', 'ingredients', 'recipes', 'store-stock', 'kitchen-stock', 'orders', 'reports', 'daily-costs'],
   pos_user: ['pos', 'orders'],
+  // Waiter accounts are intentionally POS-only. Server-side permissions further
+  // restrict them to assigned dine-in tables and order creation/additions.
+  waiter: ['pos'],
 };
 
 // Cache auth details to localStorage for offline use
