@@ -104,6 +104,7 @@ export async function createItemLess(input: {
   reasonDetails?: string;
   inventoryDisposition?: 'not_prepared' | 'waste' | 'returned';
   sourceDevice?: OrderSourceDevice;
+  authorizationPassword: string;
 }) {
   const { data, error } = await rpc('create_item_less', {
     p_order_item_id: input.orderItemId,
@@ -112,6 +113,7 @@ export async function createItemLess(input: {
     p_reason_details: input.reasonDetails ?? null,
     p_inventory_disposition: input.inventoryDisposition ?? 'not_prepared',
     p_source_device: input.sourceDevice ?? 'POS',
+    p_authorization_password: input.authorizationPassword,
   });
   if (error) throw error;
   return data as {
