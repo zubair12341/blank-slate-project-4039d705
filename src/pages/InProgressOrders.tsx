@@ -60,6 +60,7 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [cancelPassword, setCancelPassword] = useState('');
   const [cancelPasswordError, setCancelPasswordError] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile'>('cash');
   
   // Filter and search state
@@ -149,6 +150,7 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
     setSelectedOrder(order);
     setCancelPassword('');
     setCancelPasswordError('');
+    setCancelReason('');
     setShowCancelDialog(true);
   };
 
@@ -161,7 +163,8 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
     }
 
     if (selectedOrder) {
-      await cancelOrder(selectedOrder.id);
+      if (!cancelReason.trim()) { toast.error('Cancellation reason is required'); return; }
+      await cancelOrder(selectedOrder.id, cancelReason.trim());
       toast.success(`Order ${selectedOrder.orderNumber} cancelled`);
     }
 
@@ -505,6 +508,7 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
               </div>
 
               <div className="space-y-3">
+                <Label>Cancellation Reason</Label><Input value={cancelReason} onChange={e=>setCancelReason(e.target.value)} placeholder="Required reason" />
                 <Label>Security Password (5 digits)</Label>
                 <PasswordOTPInput
                   value={cancelPassword}
@@ -524,7 +528,7 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
             <Button
               variant="destructive"
               onClick={handleCancelOrder}
-              disabled={cancelPassword.length !== 5}
+              disabled={cancelPassword.length !== 5 || !cancelReason.trim()}
             >
               Cancel Order
             </Button>

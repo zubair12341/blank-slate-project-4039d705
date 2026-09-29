@@ -241,3 +241,16 @@ export async function reassignDineInOrder(input: { orderId: string; tableId: str
   if (error) throw error;
   return data as { order_id: string; table_id: string; table_number: number; waiter_id: string; waiter_name: string };
 }
+
+
+export async function cancelOrderControlled(orderId: string, reason: string) {
+  const { data, error } = await rpc('cancel_order_controlled', { p_order_id: orderId, p_reason: reason.trim(), p_source_device: 'POS' });
+  if (error) throw error;
+  return data as { order_id:string; status:string; operational_status:string; reason:string };
+}
+
+export async function refundOrderControlled(orderId: string, reason: string) {
+  const { data, error } = await rpc('refund_order_controlled', { p_order_id: orderId, p_reason: reason.trim(), p_source_device: 'POS' });
+  if (error) throw error;
+  return data as { order_id:string; status:string; payment_status:string; amount_refunded:number; reason:string };
+}

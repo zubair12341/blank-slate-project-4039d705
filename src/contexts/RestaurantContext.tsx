@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseData } from '@/hooks/useSupabaseData';
 import { useSupabaseActions } from '@/hooks/useSupabaseActions';
 import { addToSyncQueue, cacheTableData, getCachedData, removeQueuedMutationsForOrder } from '@/lib/offlineDb';
-import { createWorkflowOrder, addItemsToWorkflowOrder, makeOrderIdempotencyKey, settleOrderAtomic, createItemLess, type ItemLessReason } from '@/services/orderWorkflow';
+import { createWorkflowOrder, addItemsToWorkflowOrder, makeOrderIdempotencyKey, settleOrderAtomic, createItemLess, cancelOrderControlled, type ItemLessReason } from '@/services/orderWorkflow';
 import {
   Ingredient,
   MenuItem,
@@ -166,7 +166,7 @@ interface RestaurantContextType {
   }) => Promise<Order | null>;
   settleOrder: (orderId: string, paymentMethod?: 'cash' | 'card' | 'mobile', tableId?: string) => Promise<void>;
   itemLess: (orderItemId: string, quantity: number, reason: ItemLessReason, details: string | undefined, disposition: 'not_prepared' | 'waste' | 'returned', authorizationPassword: string) => Promise<void>;
-  cancelOrder: (orderId: string) => Promise<void>;
+  cancelOrder: (orderId: string, reason?: string) => Promise<void>;
   getTableOrder: (tableId: string) => Order | undefined;
   
   // Calculations
@@ -1027,108 +1027,17 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     }
   }, [cart, data.orders, data.setOrders, fetchOrderWithItems, settings.invoice?.gstEnabled, settings.taxRate]);
 
-  const cancelOrderAction = useCallback(async (orderId: string) => {
-    // ── Online path ──
-    if (navigator.onLine) {
-      try {
-        const order = data.orders.find((o) => o.id === orderId);
-        const safeTableId = isUuid(order?.tableId) ? order?.tableId : undefined;
-        await actions.cancelOrder(orderId, safeTableId);
+  const cancelOrderAction = useCallback(async (orderId: string, reason = 'Cancelled by POS') => {
+    if (!navigator.onLine) throw new Error('Order cancellation requires an online connection.');
+    const order = data.orders.find((o) => o.id === orderId);
+    const safeTableId = isUuid(order?.tableId) ? order?.tableId : undefined;
+    await cancelOrderControlled(orderId, reason);
+    await removeQueuedMutationsForOrder(orderId);
+    data.setOrders((prev: Order[]) => prev.map((o) => o.id === orderId ? { ...o, status: 'cancelled' as const, operationalStatus: 'cancelled' } : o));
+    data.setTables((prev: Table[]) => prev.map((t) => (t.currentOrderId === orderId || (safeTableId && t.id === safeTableId)) ? { ...t, status: 'available' as const, currentOrderId: undefined } : t));
+    void data.refetch();
+  }, [data.orders, data.setOrders, data.setTables, data.refetch]);
 
-        // The server cancellation is now authoritative. Delete any old queued
-        // offline insert/update for this same order before the sync engine can
-        // replay it and turn the cancelled order back into pending.
-        await removeQueuedMutationsForOrder(orderId);
-
-        // Release the table in the POS immediately. Match both the order's
-        // table_id and current_order_id so legacy/stale order snapshots cannot
-        // leave the table looking reserved until a refresh.
-        data.setOrders((prev: Order[]) =>
-          prev.map((o) =>
-            o.id === orderId
-              ? { ...o, status: 'cancelled' as const, operationalStatus: 'cancelled' }
-              : o
-          )
-        );
-        data.setTables((prev: Table[]) =>
-          prev.map((t) =>
-            (t.currentOrderId === orderId || (safeTableId && t.id === safeTableId))
-              ? { ...t, status: 'available' as const, currentOrderId: undefined }
-              : t
-          )
-        );
-        // Reconcile in the background; cancellation UI should feel instant.
-        void data.refetch();
-        return;
-      } catch (error) {
-        console.error('cancelOrder online error:', error);
-        throw error;
-      }
-    }
-
-    // ── Offline path ──
-    try {
-      const { toast } = await import('sonner');
-      const order = data.orders.find((o) => o.id === orderId);
-      const tableId = isUuid(order?.tableId) ? order?.tableId : undefined;
-
-      // Update order status in cache
-      const cachedOrders = await getCachedData('orders');
-      const updatedOrders = cachedOrders.map((o: any) =>
-        o.id === orderId ? { ...o, status: 'cancelled' } : o
-      );
-      await cacheTableData('orders', updatedOrders);
-
-      // Directly update React orders state
-      data.setOrders((prev: Order[]) =>
-        prev.map((o) =>
-          o.id === orderId ? { ...o, status: 'cancelled' as const } : o
-        )
-      );
-
-      await addToSyncQueue({
-        table: 'orders',
-        action: 'update',
-        data: { id: orderId, status: 'cancelled' },
-        timestamp: Date.now(),
-      });
-
-      // Free table locally
-      if (tableId) {
-        const cachedTables = await getCachedData('restaurant_tables');
-        const updatedTables = cachedTables.map((t: any) =>
-          t.id === tableId
-            ? { ...t, status: 'available', current_order_id: null }
-            : t
-        );
-        await cacheTableData('restaurant_tables', updatedTables);
-
-        // Directly update React tables state
-        data.setTables((prev: Table[]) =>
-          prev.map((t) =>
-            t.id === tableId
-              ? { ...t, status: 'available' as const, currentOrderId: undefined }
-              : t
-          )
-        );
-
-        await addToSyncQueue({
-          table: 'restaurant_tables',
-          action: 'update',
-          data: { id: tableId, status: 'available', current_order_id: null },
-          timestamp: Date.now() + 1,
-        });
-      }
-
-      toast.success('Order cancelled offline — will sync when online');
-    } catch (offlineError) {
-      console.error('cancelOrder offline error:', offlineError);
-      const { toast } = await import('sonner');
-      toast.error('Failed to cancel order offline');
-      throw offlineError;
-    }
-  }, [data.orders, actions, data.refetch]);
-  
   const addStoreStockAction = useCallback(async (ingredientId: string, quantity: number, unitCost: number) => {
     const ingredient = data.ingredients.find((i) => i.id === ingredientId);
     if (ingredient) {
