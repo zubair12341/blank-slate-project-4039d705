@@ -40,6 +40,7 @@ import { Order } from '@/types/restaurant';
 import { PasswordOTPInput } from '@/components/PasswordOTPInput';
 import { format, subHours, startOfDay, isAfter } from 'date-fns';
 import { createPrintJobId, sendLocalPrintJob } from '@/services/localPrintBridge';
+import { transitionOrderStatus } from '@/services/orderWorkflow';
 
 interface InProgressOrdersProps {
   orderType: 'online' | 'takeaway';
@@ -64,6 +65,8 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
   // Filter and search state
   const [searchQuery, setSearchQuery] = useState('');
   const [timeFilter, setTimeFilter] = useState<'all' | 'hour' | 'today'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'in_progress' | 'ready' | 'picked_up'>('all');
+  const [changingStatusId, setChangingStatusId] = useState<string | null>(null);
 
   // Filter pending orders by type, search, and time
   const pendingOrders = useMemo(() => {
@@ -86,6 +89,7 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
         ? order.orderChannel === 'online' || order.orderType === 'online'
         : order.fulfillmentType === 'takeaway' || order.orderType === 'takeaway';
       if (!matchesType) return false;
+      if (orderType === 'takeaway' && statusFilter !== 'all' && (order.operationalStatus || 'in_progress') !== statusFilter) return false;
       
       // Search filter
       if (searchQuery) {
@@ -107,7 +111,7 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
       
       return true;
     }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [orders, orderType, searchQuery, timeFilter]);
+  }, [orders, orderType, searchQuery, timeFilter, statusFilter]);
 
   const formatPrice = (price: number) => `${settings.currencySymbol} ${price.toLocaleString()}`;
 
@@ -127,8 +131,7 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
     const paidOrder = { ...selectedOrder, paymentMethod };
     try {
       await settleOrder(selectedOrder.id, paymentMethod);
-      await printInvoice(paidOrder, 'PAID');
-      toast.success(`Order ${selectedOrder.orderNumber} settled and PAID invoice printed.`);
+      toast.success(`Order ${selectedOrder.orderNumber} settled and paid.`);
       setShowSettleDialog(false);
       setSelectedOrder(null);
     } catch (error) {
@@ -190,6 +193,22 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
   const handleNewOrder = () => {
     navigate('/pos', { state: { orderType } });
   };
+
+  const moveTakeaway = async (order: Order, next: 'in_progress' | 'ready' | 'picked_up') => {
+    setChangingStatusId(order.id);
+    try {
+      await transitionOrderStatus({ orderId: order.id, newStatus: next, expectedVersion: order.version, sourceDevice: 'POS' });
+      toast.success(`${order.orderNumber} marked ${next.replace('_', ' ')}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update order status');
+    } finally { setChangingStatusId(null); }
+  };
+
+  const takeawayCounts = orderType === 'takeaway' ? {
+    in_progress: pendingOrders.filter(o => (o.operationalStatus || 'in_progress') === 'in_progress').length,
+    ready: pendingOrders.filter(o => o.operationalStatus === 'ready').length,
+    picked_up: pendingOrders.filter(o => o.operationalStatus === 'picked_up').length,
+  } : null;
 
   const typeConfig = {
     online: {
@@ -259,6 +278,16 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
         </CardContent>
       </Card>
 
+      {orderType === 'takeaway' && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          {([['in_progress','In Progress'],['ready','Ready for Pickup'],['picked_up','Picked Up']] as const).map(([key,label]) => (
+            <button key={key} onClick={() => setStatusFilter(statusFilter === key ? 'all' : key)} className={cn('rounded-xl border bg-card p-4 text-left transition', statusFilter === key && 'border-primary ring-1 ring-primary')}>
+              <div className="text-sm text-muted-foreground">{label}</div><div className="mt-1 text-2xl font-bold">{takeawayCounts?.[key] || 0}</div>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Pending Orders Count */}
       <Card className="stat-card">
         <div className="flex items-center gap-4">
@@ -293,8 +322,8 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg font-mono">{order.orderNumber}</CardTitle>
-                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
-                    Pending
+                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700 capitalize">
+                    {(order.operationalStatus || 'in_progress').replace('_', ' ')}
                   </span>
                 </div>
                 <p className="text-sm text-muted-foreground">
@@ -331,6 +360,14 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
                   <span>Total</span>
                   <span className="text-primary">{formatPrice(order.total)}</span>
                 </div>
+
+                {orderType === 'takeaway' && (
+                  <div className="grid grid-cols-2 gap-2 border-t pt-3">
+                    {(order.operationalStatus === 'open' || !order.operationalStatus) && <Button size="sm" disabled={changingStatusId===order.id} onClick={() => void moveTakeaway(order,'in_progress')}>Start Preparing</Button>}
+                    {order.operationalStatus === 'in_progress' && <Button size="sm" disabled={changingStatusId===order.id} onClick={() => void moveTakeaway(order,'ready')}>Mark Ready</Button>}
+                    {order.operationalStatus === 'ready' && <Button size="sm" disabled={changingStatusId===order.id} onClick={() => void moveTakeaway(order,'picked_up')}>Picked Up</Button>}
+                  </div>
+                )}
 
                 {/* Actions */}
                 <div className="grid grid-cols-2 gap-2">
@@ -441,7 +478,7 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
             </Button>
             <Button onClick={handleSettleOrder} className="gap-1">
               <CheckCircle className="h-4 w-4" />
-              Settle & Print
+              Settle & Close
             </Button>
           </DialogFooter>
         </DialogContent>
