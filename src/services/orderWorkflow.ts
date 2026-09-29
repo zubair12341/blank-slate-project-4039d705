@@ -181,6 +181,13 @@ export async function recordOrderPayment(input: {
 }
 
 
+export async function getOrderPaymentSummary(orderId: string) {
+  const { data, error } = await rpc('get_order_payment_summary', { p_order_id: orderId });
+  if (error) throw error;
+  return data as { order_id: string; total: number; paid: number; outstanding: number };
+}
+
+
 export async function settleOrderAtomic(input: {
   orderId: string;
   paymentMethod: 'cash' | 'card' | 'mobile';
