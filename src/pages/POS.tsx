@@ -105,6 +105,7 @@ export default function POS() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelPassword, setCancelPassword] = useState('');
   const [cancelPasswordError, setCancelPasswordError] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile'>('cash');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -368,7 +369,8 @@ export default function POS() {
     
     if (currentEditingOrderId) {
       // Cancel existing order - cancelOrder will also free the table
-      await cancelOrder(currentEditingOrderId);
+      if (!cancelReason.trim()) { toast.error('Cancellation reason is required'); return; }
+      await cancelOrder(currentEditingOrderId, cancelReason.trim());
       toast.success('Order cancelled');
     } else {
       // Just clear the cart for new orders
@@ -384,6 +386,7 @@ export default function POS() {
   const handleOpenCancelDialog = () => {
     setCancelPassword('');
     setCancelPasswordError('');
+    setCancelReason('');
     setShowCancelConfirm(true);
   };
 
@@ -1590,7 +1593,8 @@ export default function POS() {
               }
             </p>
             <div className="space-y-2">
-              <Label htmlFor="cancel-password">Enter 5-digit password to confirm</Label>
+              <Label htmlFor="cancel-reason">Cancellation Reason</Label><Input id="cancel-reason" value={cancelReason} onChange={e=>setCancelReason(e.target.value)} placeholder="Required reason" />
+                            <Label htmlFor="cancel-password">Enter 5-digit password to confirm</Label>
               <Input
                 id="cancel-password"
                 type="password"
@@ -1612,7 +1616,7 @@ export default function POS() {
             <Button variant="outline" onClick={() => setShowCancelConfirm(false)}>
               Keep Order
             </Button>
-            <Button variant="destructive" onClick={handleCancelOrder}>
+            <Button variant="destructive" onClick={handleCancelOrder} disabled={!cancelReason.trim() || cancelPassword.length !== 5}>
               Cancel Order
             </Button>
           </DialogFooter>
