@@ -87,7 +87,7 @@ serve(async (req) => {
 
     // CREATE a new staff user
     if (action === "create") {
-      const { email, password, name, phone, role } = payload;
+      const { email, password, name, phone, role, waiterId } = payload;
 
       if (!email || !password || !name || !role) {
         return new Response(
@@ -96,11 +96,37 @@ serve(async (req) => {
         );
       }
 
-      if (!["admin", "manager", "pos_user"].includes(role)) {
+      if (!["admin", "manager", "pos_user", "waiter"].includes(role)) {
         return new Response(
           JSON.stringify({ error: "Invalid role" }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
         );
+      }
+
+      if (role === "waiter") {
+        if (!waiterId) {
+          return new Response(
+            JSON.stringify({ error: "A waiter profile must be selected for waiter logins" }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+          );
+        }
+        const { data: waiter, error: waiterError } = await adminClient
+          .from("waiters")
+          .select("id,user_id,is_active")
+          .eq("id", waiterId)
+          .maybeSingle();
+        if (waiterError || !waiter || !waiter.is_active) {
+          return new Response(
+            JSON.stringify({ error: "Selected waiter profile is not active or does not exist" }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+          );
+        }
+        if (waiter.user_id) {
+          return new Response(
+            JSON.stringify({ error: "This waiter profile already has a login" }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 409 }
+          );
+        }
       }
 
       const { data: userData, error: createError } = await adminClient.auth.admin.createUser({
@@ -130,6 +156,24 @@ serve(async (req) => {
             .from("profiles")
             .update({ phone })
             .eq("user_id", userData.user.id);
+        }
+
+        if (role === "waiter") {
+          const { data: linked, error: linkError } = await adminClient
+            .from("waiters")
+            .update({ user_id: userData.user.id, updated_at: new Date().toISOString() })
+            .eq("id", waiterId)
+            .is("user_id", null)
+            .select("id")
+            .maybeSingle();
+          if (linkError || !linked) {
+            await adminClient.from("user_roles").delete().eq("user_id", userData.user.id);
+            await adminClient.auth.admin.deleteUser(userData.user.id);
+            return new Response(
+              JSON.stringify({ error: "Could not link waiter login. The waiter may already have an account." }),
+              { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 409 }
+            );
+          }
         }
       }
 
