@@ -223,12 +223,12 @@ export async function parkOrderAsUnpaid(orderId: string, customerName: string) {
   return data as { order_id: string; customer_id: string; customer_name: string; payment_status: string };
 }
 
-export async function reassignDineInOrder(input: { orderId: string; tableId: string; waiterId: string }) {
+export async function reassignDineInOrder(input: { orderId: string; tableId: string; waiterId: string; sourceDevice?: OrderSourceDevice }) {
   const { data, error } = await rpc('reassign_dine_in_order', {
     p_order_id: input.orderId,
     p_table_id: input.tableId,
     p_waiter_id: input.waiterId,
-    p_source_device: 'POS',
+    p_source_device: input.sourceDevice ?? 'POS',
   });
   if (error) throw error;
   return data as { order_id: string; table_id: string; table_number: number; waiter_id: string; waiter_name: string };
