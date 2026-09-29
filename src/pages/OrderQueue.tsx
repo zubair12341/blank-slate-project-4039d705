@@ -15,7 +15,7 @@ import { getOrderPaymentSummary, recordOrderPayment } from '@/services/orderWork
 
 const isActive=(o:Order)=>!['completed','cancelled','refunded'].includes(o.status)&&!['completed','cancelled','refunded'].includes(o.operationalStatus||'')&&!['paid','refunded'].includes(o.paymentStatus||'unpaid');
 const typeOf=(o:Order)=>o.fulfillmentType||(o.orderType==='online'?'takeaway':o.orderType);
-const statusOf=(o:Order)=>(o.operationalStatus||o.status||'open').replaceAll('_',' ');
+const statusOf=(o:Order)=>(o.operationalStatus||o.status||'open').split('_').join(' ');
 const age=(d:Date)=>{const m=Math.max(0,Math.floor((Date.now()-new Date(d).getTime())/60000));return m<60?`${m}m`:`${Math.floor(m/60)}h ${m%60}m`;};
 
 export default function OrderQueue(){
@@ -45,7 +45,7 @@ export default function OrderQueue(){
    {active.length===0?<tr><td colSpan={10} className="p-10 text-center text-muted-foreground"><ReceiptText className="mx-auto mb-2 h-7 w-7"/>No open orders match these filters.</td></tr>:active.map(o=><tr key={o.id} className="border-b last:border-0">
     <td className="p-3 whitespace-nowrap"><span className="inline-flex items-center gap-1"><Clock className="h-3.5 w-3.5"/>{age(o.createdAt)}</span></td><td className="p-3 font-mono font-semibold">{o.orderNumber}</td>
     <td className="p-3 capitalize">{typeOf(o)}</td><td className="p-3">{o.tableNumber?`Table ${o.tableNumber}`:o.customerName||'-'}</td><td className="p-3">{o.waiterName||'-'}</td><td className="p-3">{o.items.reduce((s,i)=>s+Number(i.finalQuantity??i.quantity),0)}</td>
-    <td className="p-3 capitalize">{statusOf(o)}</td><td className="p-3 capitalize">{(o.paymentStatus||'unpaid').replaceAll('_',' ')}</td><td className="p-3 font-semibold">{settings.currencySymbol} {Number(o.total).toLocaleString()}</td>
+    <td className="p-3 capitalize">{statusOf(o)}</td><td className="p-3 capitalize">{(o.paymentStatus||'unpaid').split('_').join(' ')}</td><td className="p-3 font-semibold">{settings.currencySymbol} {Number(o.total).toLocaleString()}</td>
     <td className="p-3"><div className="flex gap-2"><Button size="sm" variant="outline" onClick={()=>edit(o)}><Edit3 className="mr-1 h-4 w-4"/>Edit</Button><Button size="sm" onClick={()=>openPayment(o)}><CheckCircle2 className="mr-1 h-4 w-4"/>Payment</Button></div></td>
    </tr>)}
   </tbody></table></CardContent></Card>
