@@ -22,6 +22,7 @@ import {
   ReceiptText,
   Bike,
   ShieldCheck,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { useRestaurant } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/contexts/AuthContext';
