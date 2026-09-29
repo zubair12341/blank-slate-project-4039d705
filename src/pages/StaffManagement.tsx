@@ -21,7 +21,7 @@ interface StaffUser {
   email: string;
   name: string;
   phone: string | null;
-  role: 'admin' | 'manager' | 'pos_user';
+  role: 'admin' | 'manager' | 'pos_user' | 'waiter';
   isActive: boolean;
   createdAt: string;
 }
@@ -51,9 +51,12 @@ export default function StaffManagement() {
   const [staffSaving, setStaffSaving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [staffForm, setStaffForm] = useState({
-    name: '', email: '', password: '', phone: '', role: 'pos_user' as 'admin' | 'manager' | 'pos_user',
+    name: '', email: '', password: '', phone: '', role: 'pos_user' as 'admin' | 'manager' | 'pos_user' | 'waiter', waiterId: '',
   });
   const [deleteStaffTarget, setDeleteStaffTarget] = useState<StaffUser | null>(null);
+  const [assignmentWaiter, setAssignmentWaiter] = useState<Waiter | null>(null);
+  const [assignedTableIds, setAssignedTableIds] = useState<string[]>([]);
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
   
   // Delete confirmation state
   const [deleteTableTarget, setDeleteTableTarget] = useState<Table | null>(null);
@@ -88,6 +91,10 @@ export default function StaffManagement() {
       toast.error('Name, email, and password are required');
       return;
     }
+    if (staffForm.role === 'waiter' && !staffForm.waiterId) {
+      toast.error('Select the waiter profile to link with this login');
+      return;
+    }
     if (staffForm.password.length < 6) {
       toast.error('Password must be at least 6 characters');
       return;
@@ -103,6 +110,7 @@ export default function StaffManagement() {
           name: staffForm.name,
           phone: staffForm.phone || null,
           role: staffForm.role,
+          waiterId: staffForm.role === 'waiter' ? staffForm.waiterId : null,
         },
       });
       if (error) throw error;
@@ -110,7 +118,7 @@ export default function StaffManagement() {
 
       toast.success('Staff user created successfully');
       setShowStaffDialog(false);
-      setStaffForm({ name: '', email: '', password: '', phone: '', role: 'pos_user' });
+      setStaffForm({ name: '', email: '', password: '', phone: '', role: 'pos_user', waiterId: '' });
       fetchStaff();
     } catch (err: any) {
       toast.error(err.message || 'Failed to create staff user');
@@ -215,6 +223,45 @@ export default function StaffManagement() {
     }
   };
 
+  const openAssignments = async (waiter: Waiter) => {
+    setAssignmentWaiter(waiter);
+    const { data, error } = await supabase
+      .from('waiter_table_assignments' as any)
+      .select('table_id')
+      .eq('waiter_id', waiter.id)
+      .eq('is_active', true);
+    if (error) {
+      toast.error('Could not load table assignments');
+      return;
+    }
+    setAssignedTableIds((data || []).map((row: any) => String(row.table_id)));
+  };
+
+  const saveAssignments = async () => {
+    if (!assignmentWaiter) return;
+    setAssignmentSaving(true);
+    try {
+      const { error: disableError } = await supabase
+        .from('waiter_table_assignments' as any)
+        .update({ is_active: false } as any)
+        .eq('waiter_id', assignmentWaiter.id);
+      if (disableError) throw disableError;
+
+      for (const tableId of assignedTableIds) {
+        const { error } = await supabase
+          .from('waiter_table_assignments' as any)
+          .upsert({ waiter_id: assignmentWaiter.id, table_id: tableId, is_active: true } as any, { onConflict: 'waiter_id,table_id' });
+        if (error) throw error;
+      }
+      toast.success('Waiter table assignments saved');
+      setAssignmentWaiter(null);
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not save assignments');
+    } finally {
+      setAssignmentSaving(false);
+    }
+  };
+
   // Waiter handlers
   const handleOpenWaiterDialog = (waiter?: Waiter) => {
     if (waiter) {
@@ -257,6 +304,8 @@ export default function StaffManagement() {
         return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-destructive/10 text-destructive"><ShieldCheck className="h-3 w-3" /> Admin</span>;
       case 'manager':
         return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-warning/10 text-warning"><Shield className="h-3 w-3" /> Manager</span>;
+      case 'waiter':
+        return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700"><ChefHat className="h-3 w-3" /> Waiter</span>;
       default:
         return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary"><Users className="h-3 w-3" /> POS User</span>;
     }
@@ -419,6 +468,8 @@ export default function StaffManagement() {
                       <th>Name</th>
                       <th>Phone</th>
                       <th>Status</th>
+                      <th>Login</th>
+                      <th>Assigned Tables</th>
                       <th className="text-right">Actions</th>
                     </tr>
                   </thead>
@@ -438,6 +489,12 @@ export default function StaffManagement() {
                           <span className={waiter.isActive ? 'badge-success' : 'badge-destructive'}>
                             {waiter.isActive ? 'Active' : 'Inactive'}
                           </span>
+                        </td>
+                        <td className="text-sm">{waiter.userId ? <span className="text-green-600 font-medium">Linked</span> : <span className="text-muted-foreground">Not linked</span>}</td>
+                        <td>
+                          <Button variant="outline" size="sm" onClick={() => void openAssignments(waiter)}>
+                            Assign Tables
+                          </Button>
                         </td>
                         <td>
                           <div className="flex justify-end gap-2">
@@ -482,7 +539,7 @@ export default function StaffManagement() {
               {userRole === 'admin' && (
                 <Button
                   onClick={() => {
-                    setStaffForm({ name: '', email: '', password: '', phone: '', role: 'pos_user' });
+                    setStaffForm({ name: '', email: '', password: '', phone: '', role: 'pos_user', waiterId: '' });
                     setShowPassword(false);
                     setShowStaffDialog(true);
                   }}
@@ -509,7 +566,7 @@ export default function StaffManagement() {
               ) : (
                 <>
                   {/* Role Legend */}
-                  <div className="grid gap-4 md:grid-cols-3">
+                  <div className="grid gap-4 md:grid-cols-4">
                     <div className="rounded-lg border p-4">
                       <div className="flex items-center gap-2 mb-2">
                         <div className="p-2 rounded-lg bg-destructive/10">
@@ -541,6 +598,17 @@ export default function StaffManagement() {
                       </div>
                       <p className="text-sm text-muted-foreground">
                         Limited to POS operations and viewing orders only.
+                      </p>
+                    </div>
+                    <div className="rounded-lg border p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="p-2 rounded-lg bg-green-100">
+                          <ChefHat className="h-5 w-5 text-green-700" />
+                        </div>
+                        <span className="font-semibold">Waiter</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        POS-only login restricted to assigned tables; can place and add items only.
                       </p>
                     </div>
                   </div>
@@ -637,6 +705,20 @@ export default function StaffManagement() {
                 </SelectContent>
               </Select>
             </div>
+            {staffForm.role === 'waiter' && (
+              <div className="space-y-2">
+                <Label>Link Waiter Profile *</Label>
+                <Select value={staffForm.waiterId} onValueChange={(waiterId) => setStaffForm({ ...staffForm, waiterId })}>
+                  <SelectTrigger><SelectValue placeholder="Select waiter" /></SelectTrigger>
+                  <SelectContent>
+                    {waiters.filter((waiter) => waiter.isActive && !waiter.userId).map((waiter) => (
+                      <SelectItem key={waiter.id} value={waiter.id}>{waiter.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Create the waiter profile first, then link this login to it.</p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowTableDialog(false)}>Cancel</Button>
@@ -681,6 +763,35 @@ export default function StaffManagement() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowWaiterDialog(false)}>Cancel</Button>
             <Button onClick={handleSaveWaiter}>{editingWaiter ? 'Update' : 'Add'} Waiter</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Waiter Table Assignment Dialog */}
+      <Dialog open={!!assignmentWaiter} onOpenChange={(open) => !open && setAssignmentWaiter(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Assign Tables — {assignmentWaiter?.name}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">This waiter will only be able to see and order on the selected tables.</p>
+          <div className="grid max-h-[50vh] grid-cols-2 gap-2 overflow-y-auto py-2 sm:grid-cols-3">
+            {tables.slice().sort((a,b) => a.number-b.number).map((table) => {
+              const checked = assignedTableIds.includes(table.id);
+              return (
+                <label key={table.id} className={`flex cursor-pointer items-center gap-2 rounded-lg border p-3 ${checked ? 'border-primary bg-primary/5' : ''}`}>
+                  <input type="checkbox" checked={checked} onChange={(event) => {
+                    setAssignedTableIds((prev) => event.target.checked ? [...prev, table.id] : prev.filter((id) => id !== table.id));
+                  }} />
+                  <span className="font-medium">Table {table.number}</span>
+                </label>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignmentWaiter(null)}>Cancel</Button>
+            <Button onClick={() => void saveAssignments()} disabled={assignmentSaving}>
+              {assignmentSaving ? 'Saving...' : 'Save Assignments'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -745,7 +856,7 @@ export default function StaffManagement() {
             </div>
             <div className="space-y-2">
               <Label>Role *</Label>
-              <Select value={staffForm.role} onValueChange={(v: 'admin' | 'manager' | 'pos_user') => setStaffForm({ ...staffForm, role: v })}>
+              <Select value={staffForm.role} onValueChange={(v: 'admin' | 'manager' | 'pos_user' | 'waiter') => setStaffForm({ ...staffForm, role: v, waiterId: v === 'waiter' ? staffForm.waiterId : '' })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -763,6 +874,11 @@ export default function StaffManagement() {
                   <SelectItem value="pos_user">
                     <span className="flex items-center gap-2">
                       <Users className="h-4 w-4 text-primary" /> POS User
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="waiter">
+                    <span className="flex items-center gap-2">
+                      <ChefHat className="h-4 w-4 text-green-600" /> Waiter
                     </span>
                   </SelectItem>
                 </SelectContent>
