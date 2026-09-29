@@ -55,6 +55,7 @@ export default function MainLayout() {
     'direct-sales': 'store-stock',
     'stock-report': 'store-stock',
     'orders': 'orders',
+    'order-queue': 'orders',
     'customer-ledger': 'orders',
     'daily-costs': 'daily-costs',
     'daily-report': 'reports',
