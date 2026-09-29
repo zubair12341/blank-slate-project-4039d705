@@ -62,7 +62,7 @@ import { createPrintJobId, sendLocalPrintJob } from '@/services/localPrintBridge
 import { supabase } from '@/integrations/supabase/client';
 import { parkOrderAsUnpaid, reassignDineInOrder, saveOrderCustomer } from '@/services/orderWorkflow';
 
-type OrderTypeSelection = 'dine-in' | 'takeaway' | 'online' | null;
+type OrderTypeSelection = 'dine-in' | 'takeaway' | 'online' | 'delivery' | null;
 
 export default function POS() {
   const location = useLocation();

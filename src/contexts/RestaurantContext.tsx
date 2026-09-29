@@ -150,6 +150,7 @@ interface RestaurantContextType {
     discountType?: DiscountType;
     discountValue?: number;
     discountReason?: string;
+    sourceDevice?: any;
   }) => Promise<Order | null>;
   updateOrder: (orderId: string, orderDetails: {
     paymentMethod: 'cash' | 'card' | 'mobile';
@@ -250,24 +251,24 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           paymentMethod: orderRow.payment_method as any,
           status: orderRow.status as any,
           customerName: orderRow.customer_name,
-          customerPhone: orderRow.customer_phone || undefined,
-          deliveryAddress: orderRow.delivery_address || undefined,
-          riderId: orderRow.rider_id || undefined,
-          riderName: orderRow.rider_name || undefined,
-          dispatchedAt: orderRow.dispatched_at ? new Date(orderRow.dispatched_at) : undefined,
-          tableId: orderRow.table_id,
-          tableNumber: orderRow.table_number,
-          waiterId: orderRow.waiter_id,
-          waiterName: orderRow.waiter_name,
-          orderType: (orderRow.order_channel === 'online' || orderRow.order_type === 'online'
+          customerPhone: (orderRow as any).customer_phone || undefined,
+          deliveryAddress: (orderRow as any).delivery_address || undefined,
+          riderId: (orderRow as any).rider_id || undefined,
+          riderName: (orderRow as any).rider_name || undefined,
+          dispatchedAt: (orderRow as any).dispatched_at ? new Date((orderRow as any).dispatched_at) : undefined,
+          tableId: (orderRow as any).table_id,
+          tableNumber: (orderRow as any).table_number,
+          waiterId: (orderRow as any).waiter_id,
+          waiterName: (orderRow as any).waiter_name,
+          orderType: ((orderRow as any).order_channel === 'online' || (orderRow as any).order_type === 'online'
             ? 'online'
-            : (orderRow.fulfillment_type || orderRow.order_type)) as any,
-          createdAt: new Date(orderRow.created_at),
-          completedAt: orderRow.completed_at ? new Date(orderRow.completed_at) : undefined,
-          fulfillmentType: orderRow.fulfillment_type || undefined,
-          operationalStatus: orderRow.operational_status || undefined,
-          paymentStatus: orderRow.payment_status || undefined,
-          sourceDevice: orderRow.source_device || undefined,
+            : ((orderRow as any).fulfillment_type || (orderRow as any).order_type)) as any,
+          createdAt: new Date((orderRow as any).created_at),
+          completedAt: (orderRow as any).completed_at ? new Date((orderRow as any).completed_at) : undefined,
+          fulfillmentType: (orderRow as any).fulfillment_type as any || undefined,
+          operationalStatus: (orderRow as any).operational_status as any || undefined,
+          paymentStatus: (orderRow as any).payment_status as any || undefined,
+          sourceDevice: (orderRow as any).source_device as any || undefined,
           orderChannel: orderRow.order_channel || undefined,
           version: Number(orderRow.version || 1),
         };
@@ -962,7 +963,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     reason: ItemLessReason,
     details?: string,
     disposition: 'not_prepared' | 'waste' | 'returned' = 'not_prepared',
-    authorizationPassword: string,
+    authorizationPassword: string = "",
   ) => {
     if (!navigator.onLine) throw new Error('Item Less requires an online connection.');
 
@@ -978,7 +979,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     const previousOrders = data.orders;
     const previousCart = cart;
     const amountAffected = quantity * Number(savedItem.unitPrice);
-    data.setOrders((prev: Order[]) => prev.map((candidate) => {
+    (data.setOrders as any)((prev: Order[]) => prev.map((candidate) => {
       if (candidate.id !== order.id) return candidate;
       const nextItems = candidate.items
         .map((item) => item.id === orderItemId
