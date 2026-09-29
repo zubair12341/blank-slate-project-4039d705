@@ -29,6 +29,7 @@ import NotFound from "./pages/NotFound";
 import CustomerLedger from "./pages/CustomerLedger";
 import ItemLessReport from "./pages/ItemLessReport";
 import OrderQueue from "./pages/OrderQueue";
+import DeliveryOrders from "./pages/DeliveryOrders";
 
 const queryClient = new QueryClient();
 
@@ -71,6 +72,7 @@ const App = () => (
                 <Route path="/order-queue" element={<OrderQueue />} />
                 <Route path="/customer-ledger" element={<CustomerLedger />} />
                 <Route path="/online-orders" element={<OnlineOrders />} />
+                <Route path="/delivery-orders" element={<DeliveryOrders />} />
                 <Route path="/takeaway-orders" element={<TakeawayOrders />} />
                 <Route path="/daily-costs" element={<DailyCosts />} />
                 <Route path="/daily-report" element={<DailyReport />} />

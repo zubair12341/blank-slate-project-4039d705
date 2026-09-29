@@ -107,6 +107,8 @@ export default function POS() {
   const [cancelPasswordError, setCancelPasswordError] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile'>('cash');
   const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
   const [customers, setCustomers] = useState<Array<{ id: string; name: string; phone?: string | null }>>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [selectedWaiterId, setSelectedWaiterId] = useState('');
@@ -244,6 +246,8 @@ export default function POS() {
     setOrderType(nextType);
     setSelectedTableId(order.tableId || null);
     setCustomerName(order.customerName || '');
+    setCustomerPhone(order.customerPhone || '');
+    setDeliveryAddress(order.deliveryAddress || '');
     setSelectedWaiterId(result.waiterId || '');
     setDiscountType(order.discountType || 'fixed');
     setDiscountValue(order.discountValue || 0);
@@ -417,6 +421,11 @@ export default function POS() {
       }
     }
 
+    if ((orderType === 'delivery' || orderType === 'online') && (!customerName.trim() || !customerPhone.trim() || !deliveryAddress.trim())) {
+      toast.error('Customer name, phone and delivery address are required for delivery orders.');
+      return;
+    }
+
     const additionsToPrint = isEditingExistingOrder ? getPendingAdditions() : [...cart];
     if (isEditingExistingOrder && additionsToPrint.length === 0) {
       toast.error('Add at least one new item before saving. Use Pay & Close to finish the order.');
@@ -481,7 +490,10 @@ export default function POS() {
       setShowCheckout(false);
 
       try {
-        await persistCustomerForOrder(order.id);
+        if (orderType === 'delivery' || orderType === 'online') {
+          const { error } = await (supabase.rpc as any)('save_delivery_details', { p_order_id: order.id, p_customer_name: customerName.trim(), p_customer_phone: customerPhone.trim(), p_delivery_address: deliveryAddress.trim() });
+          if (error) throw error;
+        } else await persistCustomerForOrder(order.id);
       } catch (customerError) {
         console.error('Customer save failed:', customerError);
         toast.error('Order saved, but customer could not be stored.');
@@ -1435,6 +1447,12 @@ export default function POS() {
 
           <div className="space-y-6 py-4">
             {/* Customer Info */}
+            {(orderType === 'delivery' || orderType === 'online') && <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2"><Label htmlFor="customer-phone">Customer Phone</Label><Input id="customer-phone" value={customerPhone} onChange={e=>setCustomerPhone(e.target.value)} placeholder="03xx xxxxxxx" /></div>
+              <div className="space-y-2 md:col-span-2"><Label htmlFor="delivery-address">Delivery Address</Label><Input id="delivery-address" value={deliveryAddress} onChange={e=>setDeliveryAddress(e.target.value)} placeholder="Complete delivery address" /></div>
+            </div>}
+
+
             <div className="space-y-2">
               <Label htmlFor="customer">Customer Name</Label>
               <div className="relative">
