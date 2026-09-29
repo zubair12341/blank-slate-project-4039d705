@@ -56,6 +56,7 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Order, DiscountType } from '@/types/restaurant';
+import { authorizeDiscount } from '@/services/orderWorkflow';
 import { playKitchenNotificationSound } from '@/hooks/usePrintWithImages';
 import { createPrintJobId, sendLocalPrintJob } from '@/services/localPrintBridge';
 import { supabase } from '@/integrations/supabase/client';
@@ -116,6 +117,8 @@ export default function POS() {
   const [discountType, setDiscountType] = useState<DiscountType>('fixed');
   const [discountValue, setDiscountValue] = useState(0);
   const [discountReason, setDiscountReason] = useState('');
+  const [discountPassword, setDiscountPassword] = useState('');
+  const [discountPasswordError, setDiscountPasswordError] = useState('');
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
   const [variantPickerItem, setVariantPickerItem] = useState<import('@/types/restaurant').MenuItem | null>(null);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
@@ -433,6 +436,14 @@ export default function POS() {
     if (isEditingExistingOrder && additionsToPrint.length === 0) {
       toast.error('Add at least one new item before saving. Use Pay & Close to finish the order.');
       return;
+    }
+
+    if (discountValue > 0) {
+      if (isWaiter) { toast.error('Waiter accounts cannot apply discounts.'); return; }
+      if (!discountReason.trim()) { toast.error('Discount reason is required.'); return; }
+      if (discountPassword.length !== 5) { setDiscountPasswordError('Enter the 5-digit discount password'); toast.error('Discount authorization password is required.'); return; }
+      try { await authorizeDiscount({password:discountPassword,discountType,discountValue,subtotal,reason:discountReason}); setDiscountPasswordError(''); }
+      catch(error){ setDiscountPasswordError('Incorrect or unauthorized discount password'); toast.error(error instanceof Error?error.message:'Discount authorization failed'); return; }
     }
 
     setIsPlacingOrder(true);
@@ -1006,6 +1017,7 @@ export default function POS() {
                 </div>
                 <Input className="h-8 text-xs" value={discountReason} placeholder="Discount reason"
                   onChange={(e) => setDiscountReason(e.target.value)} />
+                {discountValue > 0 && <><Input className="h-8 text-xs" type="password" inputMode="numeric" maxLength={5} value={discountPassword} placeholder="5-digit discount password" onChange={e=>{setDiscountPassword(e.target.value.replace(/\\D/g,'').slice(0,5));setDiscountPasswordError('');}} />{discountPasswordError&&<p className="text-xs text-destructive">{discountPasswordError}</p>}</>}
               </div>
             )}
           </div>}

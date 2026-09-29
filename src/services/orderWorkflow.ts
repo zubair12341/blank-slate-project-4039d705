@@ -254,3 +254,9 @@ export async function refundOrderControlled(orderId: string, reason: string) {
   if (error) throw error;
   return data as { order_id:string; status:string; payment_status:string; amount_refunded:number; reason:string };
 }
+
+
+export async function authorizeDiscount(input:{password:string;discountType:'fixed'|'percentage';discountValue:number;subtotal:number;reason:string}) {
+ const {data,error}=await rpc('authorize_discount',{p_password:input.password,p_discount_type:input.discountType,p_discount_value:input.discountValue,p_subtotal:input.subtotal,p_reason:input.reason});
+ if(error) throw error; return data as {authorized:boolean;discount_amount:number};
+}
