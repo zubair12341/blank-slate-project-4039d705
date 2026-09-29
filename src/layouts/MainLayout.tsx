@@ -68,6 +68,7 @@ export default function MainLayout() {
     'item-wise-sales': 'reports.view',
     'inventory-movements': 'inventory.view',
     'stock-adjustments': 'inventory.adjust',
+    'purchase-orders': 'inventory.purchase',
   };
 
   // Check route permission
