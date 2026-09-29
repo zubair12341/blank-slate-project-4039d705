@@ -59,6 +59,7 @@ export default function MainLayout() {
     'daily-costs': 'daily-costs',
     'daily-report': 'reports',
     'reports': 'reports',
+    'item-less-report': 'reports',
     'staff': 'staff',
     'settings': 'settings',
   };
