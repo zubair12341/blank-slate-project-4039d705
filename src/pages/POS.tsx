@@ -130,8 +130,21 @@ export default function POS() {
   const [waiterContext, setWaiterContext] = useState<{ waiterId: string; name: string; tableIds: string[] } | null>(null);
   const [waiterContextLoading, setWaiterContextLoading] = useState(false);
   const [waiterAssignmentRevision, setWaiterAssignmentRevision] = useState(0);
+  const [editingBaselineQuantities, setEditingBaselineQuantities] = useState<Map<string, number>>(new Map());
 
   const isEditingExistingOrder = !!currentEditingOrderId;
+
+  const orderItemKey = (menuItemId: string, variantId?: string | null) =>
+    `${menuItemId}::${variantId || 'base'}`;
+
+  const captureEditingBaseline = (order: Order) => {
+    const baseline = new Map<string, number>();
+    order.items.forEach((item) => {
+      const key = orderItemKey(item.menuItemId, item.variantId);
+      baseline.set(key, (baseline.get(key) || 0) + Number(item.finalQuantity ?? item.quantity));
+    });
+    setEditingBaselineQuantities(baseline);
+  };
 
   useEffect(() => {
     void supabase.from('customers' as any).select('id,name,phone').order('name').then(({ data }) => {
@@ -233,6 +246,7 @@ export default function POS() {
     setDiscountType(order.discountType || 'fixed');
     setDiscountValue(order.discountValue || 0);
     setDiscountReason(order.discountReason || '');
+    captureEditingBaseline(order);
     // Remove navigation state so refresh/back cannot replay the edit intent.
     navigate(location.pathname, { replace: true, state: null });
   }, [location.pathname, location.state, loadOrderToCart, navigate]);
@@ -275,16 +289,9 @@ export default function POS() {
   // the new kitchen items and never reprints the original KOT.
   const getPendingAdditions = () => {
     if (!currentEditingOrderId) return [...cart];
-    const existing = getOrderById(currentEditingOrderId);
-    if (!existing) return [];
-    const previous = new Map<string, number>();
-    existing.items.forEach((item) => {
-      const key = `${item.menuItemId}::${item.variantId || 'base'}`;
-      previous.set(key, (previous.get(key) || 0) + Number(item.finalQuantity ?? item.quantity));
-    });
     return cart.flatMap((item) => {
-      const key = `${item.menuItem.id}::${item.variant?.id || 'base'}`;
-      const added = item.quantity - (previous.get(key) || 0);
+      const key = orderItemKey(item.menuItem.id, item.variant?.id);
+      const added = item.quantity - (editingBaselineQuantities.get(key) || 0);
       return added > 0 ? [{ ...item, quantity: added }] : [];
     });
   };
@@ -322,6 +329,7 @@ export default function POS() {
         setDiscountType(result.order.discountType || 'fixed');
         setDiscountValue(result.order.discountValue || 0);
         setDiscountReason(result.order.discountReason || '');
+        captureEditingBaseline(result.order);
       }
       toast.info('Editing existing order for Table ' + table.number);
     }
@@ -336,6 +344,7 @@ export default function POS() {
     setDiscountType('fixed');
     setDiscountValue(0);
     setDiscountReason('');
+    setEditingBaselineQuantities(new Map());
   };
 
   const handleCheckout = () => {
@@ -428,6 +437,12 @@ export default function POS() {
           discountValue,
           discountReason: discountValue > 0 ? discountReason : undefined,
           sourceDevice: isWaiter ? 'WAITER_MOBILE' : 'POS',
+          additions: additionsToPrint.map((item) => ({
+            menuItemId: item.menuItem.id,
+            variantId: item.variant?.id,
+            quantity: item.quantity,
+            notes: item.notes,
+          })),
         });
         if (order) {
           toast.success('New items added to the existing order!');
@@ -828,7 +843,7 @@ export default function POS() {
         <p className="text-sm text-muted-foreground">{cart.length} items</p>
         {isEditingExistingOrder && (
           <p className="mt-1 text-xs font-medium text-primary">
-            Add products from the left, then use “Save & Print New Items”. Existing items are not reprinted.
+            Add products from the left, then save only the new quantities. Saved quantities stay protected.
           </p>
         )}
         <div className="relative mt-2">
@@ -883,20 +898,22 @@ export default function POS() {
                       variant="outline"
                       size="icon"
                       className="h-6 w-6"
-                      disabled={isWaiter && isEditingExistingOrder}
+                      disabled={isEditingExistingOrder && isWaiter && item.quantity <= (editingBaselineQuantities.get(orderItemKey(item.menuItem.id, item.variant?.id)) || 0)}
                       onClick={() => {
                         if (isEditingExistingOrder) {
+                          const baselineQty = editingBaselineQuantities.get(orderItemKey(item.menuItem.id, item.variant?.id)) || 0;
+                          if (item.quantity > baselineQty) {
+                            updateCartItemQuantity(item.menuItem.id, item.quantity - 1, item.variant?.id);
+                            return;
+                          }
+                          if (isWaiter) return;
                           const order = currentEditingOrderId ? getOrderById(currentEditingOrderId) : undefined;
                           const row = order?.items.find((oi) => oi.menuItemId === item.menuItem.id && (oi.variantId || '') === (item.variant?.id || '') && Number(oi.finalQuantity ?? oi.quantity) > 0);
                           if (row?.id) {
                             setItemLessTarget({ id: row.id, name: displayName, max: Number(row.finalQuantity ?? row.quantity) });
                             setItemLessQty(1);
-                          } else {
-                            toast.error('Saved item row not found. Refresh the order.');
-                          }
-                        } else {
-                          updateCartItemQuantity(item.menuItem.id, item.quantity - 1, item.variant?.id);
-                        }
+                          } else toast.error('Saved item row not found. Refresh the order.');
+                        } else updateCartItemQuantity(item.menuItem.id, item.quantity - 1, item.variant?.id);
                       }}
                     >
                       <Minus className="h-3 w-3" />
@@ -914,9 +931,15 @@ export default function POS() {
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6 text-destructive hover:text-destructive"
-                      disabled={isWaiter && isEditingExistingOrder}
+                      disabled={isEditingExistingOrder && isWaiter && item.quantity <= (editingBaselineQuantities.get(orderItemKey(item.menuItem.id, item.variant?.id)) || 0)}
                       onClick={() => {
                         if (isEditingExistingOrder) {
+                          const baselineQty = editingBaselineQuantities.get(orderItemKey(item.menuItem.id, item.variant?.id)) || 0;
+                          if (item.quantity > baselineQty) {
+                            updateCartItemQuantity(item.menuItem.id, baselineQty, item.variant?.id);
+                            return;
+                          }
+                          if (isWaiter) return;
                           const order = currentEditingOrderId ? getOrderById(currentEditingOrderId) : undefined;
                           const row = order?.items.find((oi) => oi.menuItemId === item.menuItem.id && (oi.variantId || '') === (item.variant?.id || '') && Number(oi.finalQuantity ?? oi.quantity) > 0);
                           if (row?.id) {
@@ -1029,7 +1052,7 @@ export default function POS() {
             </>
           )}
           <Button className="w-full col-span-3 h-9 text-sm font-semibold" onClick={handleCompleteOrder} disabled={!isOnline || isPlacingOrder || (!isEditingExistingOrder && cart.length === 0) || (isEditingExistingOrder && pendingAdditions.length === 0)}>
-            {isPlacingOrder ? 'Saving...' : isEditingExistingOrder ? 'Save & Print New Items' : 'Place Order'}
+            {isPlacingOrder ? 'Saving...' : isEditingExistingOrder ? 'Save New Items' : 'Place Order'}
           </Button>
         </div>
       </div>
