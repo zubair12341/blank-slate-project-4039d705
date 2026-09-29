@@ -1,0 +1,1 @@
+-- Task 22 production migration creates immutable-style inventory movement ledger records for purchases, transfer in/out, waste/removals and direct stock sales; backfills historical source records; installs capture triggers; and grants inventory.view to management roles. Applied to production as task22_inventory_movement_ledger.
