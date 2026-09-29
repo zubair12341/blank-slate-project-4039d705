@@ -129,6 +129,7 @@ export default function POS() {
   const [itemLessPasswordError, setItemLessPasswordError] = useState('');
   const [waiterContext, setWaiterContext] = useState<{ waiterId: string; name: string; tableIds: string[] } | null>(null);
   const [waiterContextLoading, setWaiterContextLoading] = useState(false);
+  const [waiterAssignmentRevision, setWaiterAssignmentRevision] = useState(0);
 
   const isEditingExistingOrder = !!currentEditingOrderId;
 
@@ -136,6 +137,14 @@ export default function POS() {
     void supabase.from('customers' as any).select('id,name,phone').order('name').then(({ data }) => {
       setCustomers((data || []) as any);
     });
+  }, []);
+
+  // Task 6: keep an already-open waiter device synchronized when a manager
+  // changes table assignments. No logout or manual refresh is required.
+  useEffect(() => {
+    const handleAssignmentChange = () => setWaiterAssignmentRevision((value) => value + 1);
+    window.addEventListener('waiter-assignments-changed', handleAssignmentChange);
+    return () => window.removeEventListener('waiter-assignments-changed', handleAssignmentChange);
   }, []);
 
   // Waiter accounts are POS-only and are bound to their own waiter profile and
@@ -165,7 +174,7 @@ export default function POS() {
       setWaiterContextLoading(false);
     });
     return () => { cancelled = true; };
-  }, [isWaiter]);
+  }, [isWaiter, waiterAssignmentRevision]);
 
   const visibleTables = isWaiter
     ? tables.filter((table) => waiterContext?.tableIds.includes(table.id))

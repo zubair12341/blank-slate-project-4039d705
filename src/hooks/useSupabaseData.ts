@@ -255,7 +255,7 @@ async function loadFromCache() {
 }
 
 export function useSupabaseData() {
-  const { user } = useAuth();
+  const { user, userRole } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [ingredientCategories, setIngredientCategories] = useState<IngredientCategory[]>([]);
@@ -431,38 +431,82 @@ export function useSupabaseData() {
     }
   }, [user, applyData]);
 
+  // Task 6: refresh only the order that changed instead of reloading the whole dataset.
+  const refreshLiveOrder = useCallback(async (orderId: string) => {
+    if (!orderId || !navigator.onLine) return;
+    const [orderRes, itemsRes] = await Promise.all([
+      supabase.from('orders').select('*').eq('id', orderId).maybeSingle(),
+      supabase.from('order_items').select('*').eq('order_id', orderId).order('created_at', { ascending: false }),
+    ]);
+    if (orderRes.error) throw orderRes.error;
+    if (itemsRes.error) throw itemsRes.error;
+    if (!orderRes.data) {
+      setOrders((prev) => prev.filter((order) => order.id !== orderId));
+      return;
+    }
+    const items = dedupeLatestOrderItems(itemsRes.data || []).map(transformOrderItem);
+    const fresh = transformOrder(orderRes.data, items);
+    setOrders((prev) => {
+      const exists = prev.some((order) => order.id === orderId);
+      return exists ? prev.map((order) => order.id === orderId ? fresh : order) : [fresh, ...prev];
+    });
+  }, []);
+
+  const applyLiveTable = useCallback((row: any) => {
+    if (!row?.id) return;
+    const fresh = transformTable(row);
+    setTables((prev) => {
+      const exists = prev.some((table) => table.id === fresh.id);
+      return exists ? prev.map((table) => table.id === fresh.id ? fresh : table) : [...prev, fresh].sort((a, b) => a.number - b.number);
+    });
+  }, []);
+
   // Initial fetch
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
 
-  // Set up realtime subscriptions (only when online)
+  // Task 6: live waiter -> POS synchronization.
   useEffect(() => {
     if (!user) return;
 
-    const ordersChannel = supabase
-      .channel('orders-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'orders' },
-        () => { fetchAll(); }
-      )
-      .subscribe();
+    const liveChannel = supabase
+      .channel('task6-live-pos-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload: any) => {
+        const row = payload.new || payload.old;
+        const orderId = row?.id;
+        if (payload.eventType === 'DELETE') {
+          if (orderId) setOrders((prev) => prev.filter((order) => order.id !== orderId));
+          return;
+        }
+        if (orderId) void refreshLiveOrder(orderId).catch((error) => console.error('[Realtime] order refresh failed', error));
+        if (payload.eventType === 'INSERT' && row?.source_device === 'WAITER_MOBILE' && userRole !== 'waiter') {
+          toast.success('New waiter order received', {
+            description: row?.table_number ? ('Table ' + row.table_number + ' · ' + (row.order_number || 'New order')) : (row.order_number || 'New order'),
+          });
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, (payload: any) => {
+        const orderId = (payload.new || payload.old)?.order_id;
+        if (orderId) void refreshLiveOrder(orderId).catch((error) => console.error('[Realtime] item refresh failed', error));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'restaurant_tables' }, (payload: any) => {
+        if (payload.eventType === 'DELETE') {
+          const tableId = payload.old?.id;
+          if (tableId) setTables((prev) => prev.filter((table) => table.id !== tableId));
+        } else {
+          applyLiveTable(payload.new);
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'waiter_table_assignments' }, () => {
+        window.dispatchEvent(new CustomEvent('waiter-assignments-changed'));
+      })
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') console.error('[Realtime] POS synchronization channel failed');
+      });
 
-    const ingredientsChannel = supabase
-      .channel('ingredients-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'ingredients' },
-        () => { fetchAll(); }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(ordersChannel);
-      supabase.removeChannel(ingredientsChannel);
-    };
-  }, [user, fetchAll]);
+    return () => { void supabase.removeChannel(liveChannel); };
+  }, [user, userRole, refreshLiveOrder, applyLiveTable]);
 
   // Re-fetch when coming back online
   useEffect(() => {
