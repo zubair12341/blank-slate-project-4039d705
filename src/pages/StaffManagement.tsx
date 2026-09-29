@@ -241,18 +241,13 @@ export default function StaffManagement() {
     if (!assignmentWaiter) return;
     setAssignmentSaving(true);
     try {
-      const { error: disableError } = await supabase
-        .from('waiter_table_assignments' as any)
-        .update({ is_active: false } as any)
-        .eq('waiter_id', assignmentWaiter.id);
-      if (disableError) throw disableError;
-
-      for (const tableId of assignedTableIds) {
-        const { error } = await supabase
-          .from('waiter_table_assignments' as any)
-          .upsert({ waiter_id: assignmentWaiter.id, table_id: tableId, is_active: true } as any, { onConflict: 'waiter_id,table_id' });
-        if (error) throw error;
-      }
+      // Save the complete assignment set atomically on the server. This avoids
+      // multiple browser PATCH/UPSERT requests and prevents partial assignments.
+      const { error } = await supabase.rpc('set_waiter_table_assignments' as any, {
+        p_waiter_id: assignmentWaiter.id,
+        p_table_ids: assignedTableIds,
+      } as any);
+      if (error) throw error;
       toast.success('Waiter table assignments saved');
       setAssignmentWaiter(null);
     } catch (error: any) {
