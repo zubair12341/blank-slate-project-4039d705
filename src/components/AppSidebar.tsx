@@ -59,6 +59,7 @@ const navigation = [
   { name: 'Daily Costs', href: '/daily-costs', icon: Banknote, permission: 'expenses.manage' },
   { name: 'Daily Report', href: '/daily-report', icon: Calendar, permission: 'reports.view' },
   { name: 'Reports', href: '/reports', icon: BarChart3, permission: 'reports.view' },
+  { name: 'Item Wise Sales', href: '/item-wise-sales', icon: FileText, permission: 'reports.view' },
   { name: 'Item Less Report', href: '/item-less-report', icon: FileText, permission: 'item_less.report' },
   { name: 'Staff', href: '/staff', icon: Users, permission: 'staff.manage' },
   { name: 'Audit Log', href: '/audit-log', icon: ShieldCheck, permission: 'audit.view' },
