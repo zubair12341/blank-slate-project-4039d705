@@ -20,6 +20,7 @@ import {
   DollarSign,
   WalletCards,
   ReceiptText,
+  Bike,
 } from 'lucide-react';
 import { useRestaurant } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -43,6 +44,7 @@ const navigation = [
   { name: 'POS', href: '/pos', icon: ShoppingCart, permission: 'pos' },
   { name: 'Order Queue', href: '/order-queue', icon: ReceiptText, permission: 'orders' },
   { name: 'Online Orders', href: '/online-orders', icon: Wifi, permission: 'orders' },
+  { name: 'Delivery & Riders', href: '/delivery-orders', icon: Bike, permission: 'orders' },
   { name: 'Takeaway Orders', href: '/takeaway-orders', icon: ShoppingBag, permission: 'orders' },
   { name: 'Food Items', href: '/food-items', icon: UtensilsCrossed, permission: 'food-items' },
   { name: 'Recipes', href: '/recipes', icon: BookOpen, permission: 'recipes' },
