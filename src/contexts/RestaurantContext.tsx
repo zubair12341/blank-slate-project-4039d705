@@ -536,7 +536,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
           discountType: orderDetails.discountType,
           discountValue: orderDetails.discountValue,
           discountReason: orderDetails.discountReason,
-          sourceDevice: 'POS',
+          sourceDevice: orderDetails.sourceDevice || 'POS',
           orderChannel: orderDetails.orderType === 'online' ? 'online' : 'pos',
           idempotencyKey: makeOrderIdempotencyKey(),
         });
@@ -774,7 +774,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         }
 
         await addItemsToWorkflowOrder(orderId, additions, {
-          sourceDevice: 'POS',
+          sourceDevice: orderDetails.sourceDevice || 'POS',
           idempotencyKey: makeOrderIdempotencyKey(),
         });
 
