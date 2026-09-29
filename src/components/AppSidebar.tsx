@@ -54,6 +54,7 @@ const navigation = [
   { name: 'Kitchen Stock', href: '/kitchen-stock', icon: ChefHat, permission: 'kitchen-stock', showBadge: true },
   { name: 'Direct Sales', href: '/direct-sales', icon: DollarSign, permission: 'inventory.manage' },
   { name: 'Stock Report', href: '/stock-report', icon: BarChart3, permission: 'inventory.view' },
+  { name: 'Stock Movement', href: '/inventory-movements', icon: ArrowRightLeft, permission: 'inventory.view' },
   { name: 'Orders', href: '/orders', icon: FileText, permission: 'orders' },
   { name: 'Customer Ledger', href: '/customer-ledger', icon: WalletCards, permission: 'customer_ledger.view' },
   { name: 'Daily Costs', href: '/daily-costs', icon: Banknote, permission: 'expenses.manage' },
