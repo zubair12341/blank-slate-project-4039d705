@@ -886,7 +886,7 @@ export default function StaffManagement() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowStaffDialog(false) disabled={staffSaving}>Cancel</Button>
+            <Button variant="outline" onClick={() => setShowStaffDialog(false)} disabled={staffSaving}>Cancel</Button>
             <Button onClick={handleCreateStaff} disabled={staffSaving} className="gap-2">
               {staffSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
               {staffSaving ? 'Creating...' : 'Create User'}
