@@ -65,6 +65,7 @@ export default function MainLayout() {
     'staff': 'staff',
     'settings': 'settings',
     'audit-log': 'audit.view',
+    'item-wise-sales': 'reports.view',
   };
 
   // Check route permission
