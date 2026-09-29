@@ -69,9 +69,12 @@ export default function MainLayout() {
   // Check route permission
   const currentPath = location.pathname.replace(/^\//, '') || '';
   const pathPermission = routePermissionMap[currentPath] || currentPath;
+  const granularRoutePermissionMap: Record<string,string> = {
+    '': 'dashboard.view','dashboard':'dashboard.view','food-items':'menu.manage','menu':'menu.manage','ingredients':'inventory.manage','recipes':'inventory.manage','store-stock':'inventory.manage','stock':'inventory.manage','kitchen-stock':'inventory.manage','direct-sales':'inventory.manage','stock-report':'inventory.view','customer-ledger':'customer_ledger.view','daily-costs':'expenses.manage','daily-report':'reports.view','reports':'reports.view','item-less-report':'item_less.report','staff':'staff.manage','settings':'settings.manage'
+  };
+  const granularPermission = granularRoutePermissionMap[currentPath];
   
-  // Allow pos-users to access root (redirect to POS)
-  if (!hasPermission(pathPermission) && pathPermission !== 'dashboard') {
+  if ((granularPermission && !hasPermission(granularPermission)) || (!granularPermission && !hasPermission(pathPermission) && pathPermission !== 'dashboard')) {
     // Redirect to POS for pos_user role or dashboard for others
     return <Navigate to={hasPermission('pos') ? '/pos' : '/'} replace />;
   }
