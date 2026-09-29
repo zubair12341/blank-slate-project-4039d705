@@ -34,6 +34,7 @@ import AuditLog from "./pages/AuditLog";
 import ItemWiseSales from "./pages/ItemWiseSales";
 import InventoryMovements from "./pages/InventoryMovements";
 import StockAdjustments from "./pages/StockAdjustments";
+import PurchaseOrders from "./pages/PurchaseOrders";
 
 const queryClient = new QueryClient();
 
@@ -74,6 +75,7 @@ const App = () => (
                 <Route path="/stock-report" element={<StockReport />} />
                 <Route path="/inventory-movements" element={<InventoryMovements />} />
                 <Route path="/stock-adjustments" element={<StockAdjustments />} />
+                <Route path="/purchase-orders" element={<PurchaseOrders />} />
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/order-queue" element={<OrderQueue />} />
                 <Route path="/customer-ledger" element={<CustomerLedger />} />
