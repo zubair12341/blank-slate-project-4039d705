@@ -176,6 +176,7 @@ export async function recordOrderPayment(input: {
     payment_id: string;
     duplicate: boolean;
     total_paid?: number;
+    outstanding?: number;
     payment_status: string;
   };
 }
