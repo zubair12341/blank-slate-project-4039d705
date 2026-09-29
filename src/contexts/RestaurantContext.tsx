@@ -929,7 +929,8 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     if (!navigator.onLine) throw new Error('Payment requires an online connection.');
     const order = data.orders.find((o) => o.id === orderId);
     if (!order) throw new Error('Order not found. Refresh and try again.');
-    if (order.paymentStatus === 'paid' || order.status === 'completed') throw new Error('This order is already paid/closed.');
+    if (order.paymentStatus === 'paid') throw new Error('This order is already paid.');
+    if (order.status === 'cancelled' || order.status === 'refunded' || order.paymentStatus === 'refunded') throw new Error('Cancelled/refunded orders cannot be settled.');
 
     // One server transaction records the outstanding payment, closes the order,
     // releases any linked table, and writes the audit trail. This replaces the

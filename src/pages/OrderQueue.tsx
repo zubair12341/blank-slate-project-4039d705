@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Order } from '@/types/restaurant';
 import { toast } from 'sonner';
+import { getOrderPaymentSummary, recordOrderPayment } from '@/services/orderWorkflow';
 
 const isActive=(o:Order)=>!['completed','cancelled','refunded'].includes(o.status)&&!['completed','cancelled','refunded'].includes(o.operationalStatus||'')&&!['paid','refunded'].includes(o.paymentStatus||'unpaid');
 const typeOf=(o:Order)=>o.fulfillmentType||(o.orderType==='online'?'takeaway':o.orderType);
@@ -20,14 +21,16 @@ const age=(d:Date)=>{const m=Math.max(0,Math.floor((Date.now()-new Date(d).getTi
 export default function OrderQueue(){
  const navigate=useNavigate(); const {orders,settings,settleOrder}=useRestaurant();
  const [search,setSearch]=useState(''),[type,setType]=useState('all'),[payment,setPayment]=useState('all'),[selected,setSelected]=useState<Order|null>(null),[method,setMethod]=useState<'cash'|'card'|'mobile'>('cash'),[settling,setSettling]=useState(false);
+ const [summary,setSummary]=useState<{total:number;paid:number;outstanding:number}|null>(null),[partialAmount,setPartialAmount]=useState(''),[reference,setReference]=useState('');
  const active=useMemo(()=>orders.filter(isActive).filter(o=>{
    const q=search.trim().toLowerCase(),t=typeOf(o);
    return(type==='all'||t===type)&&(payment==='all'||(o.paymentStatus||'unpaid')===payment)&&(!q||[o.orderNumber,o.customerName,o.waiterName,o.tableNumber].some(v=>String(v||'').toLowerCase().includes(q)));
  }).sort((a,b)=>new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime()),[orders,search,type,payment]);
  const totals={all:orders.filter(isActive).length,dine:orders.filter(o=>isActive(o)&&typeOf(o)==='dine-in').length,take:orders.filter(o=>isActive(o)&&typeOf(o)==='takeaway').length,delivery:orders.filter(o=>isActive(o)&&typeOf(o)==='delivery').length};
  const edit=(o:Order)=>navigate('/pos',{state:{orderId:o.id,orderType:o.orderType==='online'?'online':typeOf(o),editMode:true}});
- const openPayment=(o:Order)=>{setSelected(o);setMethod(o.paymentMethod||'cash');};
+ const openPayment=async(o:Order)=>{setSelected(o);setMethod(o.paymentMethod||'cash');setPartialAmount('');setReference('');setSummary(null);try{const s=await getOrderPaymentSummary(o.id);setSummary({total:Number(s.total),paid:Number(s.paid),outstanding:Number(s.outstanding)});}catch(e){toast.error(e instanceof Error?e.message:'Could not load payment balance');}};
  const settle=async()=>{if(!selected)return;setSettling(true);try{await settleOrder(selected.id,method,selected.tableId);toast.success(`${selected.orderNumber} paid and closed`);setSelected(null);}catch(e){toast.error(e instanceof Error?e.message:'Failed to settle order');}finally{setSettling(false);}};
+ const partial=async()=>{if(!selected||!summary)return;const amount=Number(partialAmount);if(!Number.isFinite(amount)||amount<=0||amount>=summary.outstanding){toast.error('Enter an amount greater than 0 and less than the outstanding balance.');return;}setSettling(true);try{const r=await recordOrderPayment({orderId:selected.id,amount,paymentMethod:method,reference:reference.trim()||undefined,sourceDevice:'POS'});setSummary(s=>s?{...s,paid:Number(r.total_paid||s.paid+amount),outstanding:Number((r as any).outstanding??s.outstanding-amount)}:s);setPartialAmount('');setReference('');toast.success(`Partial payment recorded for ${selected.orderNumber}`);}catch(e){toast.error(e instanceof Error?e.message:'Failed to record payment');}finally{setSettling(false);}};
  return <div className="space-y-6 animate-fade-in">
   <div><h1 className="text-2xl font-bold">Order Queue</h1><p className="text-muted-foreground">One live queue for every open restaurant order.</p></div>
   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -46,9 +49,9 @@ export default function OrderQueue(){
     <td className="p-3"><div className="flex gap-2"><Button size="sm" variant="outline" onClick={()=>edit(o)}><Edit3 className="mr-1 h-4 w-4"/>Edit</Button><Button size="sm" onClick={()=>openPayment(o)}><CheckCircle2 className="mr-1 h-4 w-4"/>Payment</Button></div></td>
    </tr>)}
   </tbody></table></CardContent></Card>
-  <Dialog open={!!selected} onOpenChange={open=>!open&&setSelected(null)}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Payment / Close Order</DialogTitle><DialogDescription>{selected?.orderNumber} · {settings.currencySymbol} {Number(selected?.total||0).toLocaleString()}</DialogDescription></DialogHeader>
-   <div className="space-y-3 py-3"><Label>Payment Method</Label><RadioGroup value={method} onValueChange={v=>setMethod(v as typeof method)} className="grid grid-cols-3 gap-2">{['cash','card','mobile'].map(v=><Label key={v} className="flex cursor-pointer items-center gap-2 rounded-md border p-3 capitalize"><RadioGroupItem value={v}/>{v}</Label>)}</RadioGroup></div>
-   <DialogFooter><Button variant="outline" onClick={()=>setSelected(null)}>Cancel</Button><Button disabled={settling} onClick={()=>void settle()}>{settling?'Processing...':'Mark Paid & Close'}</Button></DialogFooter>
+  <Dialog open={!!selected} onOpenChange={open=>!open&&setSelected(null)}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Payment / Close Order</DialogTitle><DialogDescription>{selected?.orderNumber} · record a partial payment or settle the full outstanding balance.</DialogDescription></DialogHeader>
+   <div className="space-y-4 py-3">{summary&&<div className="grid grid-cols-3 gap-2 rounded-md border p-3 text-sm"><div><div className="text-muted-foreground">Total</div><b>{settings.currencySymbol} {summary.total.toLocaleString()}</b></div><div><div className="text-muted-foreground">Paid</div><b>{settings.currencySymbol} {summary.paid.toLocaleString()}</b></div><div><div className="text-muted-foreground">Due</div><b>{settings.currencySymbol} {summary.outstanding.toLocaleString()}</b></div></div>}<div><Label>Payment Method</Label><RadioGroup value={method} onValueChange={v=>setMethod(v as typeof method)} className="mt-2 grid grid-cols-3 gap-2">{['cash','card','mobile'].map(v=><Label key={v} className="flex cursor-pointer items-center gap-2 rounded-md border p-3 capitalize"><RadioGroupItem value={v}/>{v}</Label>)}</RadioGroup></div><div className="grid grid-cols-2 gap-2"><div><Label>Partial Amount</Label><Input type="number" min="1" value={partialAmount} onChange={e=>setPartialAmount(e.target.value)} placeholder="Optional"/></div><div><Label>Reference</Label><Input value={reference} onChange={e=>setReference(e.target.value)} placeholder="Optional"/></div></div><Button variant="outline" className="w-full" disabled={settling||!summary||summary.outstanding<=0} onClick={()=>void partial()}>Record Partial Payment</Button></div>
+   <DialogFooter><Button variant="outline" onClick={()=>setSelected(null)}>Cancel</Button><Button disabled={settling||!summary||summary.outstanding<=0} onClick={()=>void settle()}>{settling?'Processing...':'Pay Full Due & Close'}</Button></DialogFooter>
   </DialogContent></Dialog>
  </div>;
 }

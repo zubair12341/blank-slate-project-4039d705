@@ -176,8 +176,16 @@ export async function recordOrderPayment(input: {
     payment_id: string;
     duplicate: boolean;
     total_paid?: number;
+    outstanding?: number;
     payment_status: string;
   };
+}
+
+
+export async function getOrderPaymentSummary(orderId: string) {
+  const { data, error } = await rpc('get_order_payment_summary', { p_order_id: orderId });
+  if (error) throw error;
+  return data as { order_id: string; total: number; paid: number; outstanding: number };
 }
 
 
