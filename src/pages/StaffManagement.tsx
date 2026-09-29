@@ -705,20 +705,6 @@ export default function StaffManagement() {
                 </SelectContent>
               </Select>
             </div>
-            {staffForm.role === 'waiter' && (
-              <div className="space-y-2">
-                <Label>Link Waiter Profile *</Label>
-                <Select value={staffForm.waiterId} onValueChange={(waiterId) => setStaffForm({ ...staffForm, waiterId })}>
-                  <SelectTrigger><SelectValue placeholder="Select waiter" /></SelectTrigger>
-                  <SelectContent>
-                    {waiters.filter((waiter) => waiter.isActive && !waiter.userId).map((waiter) => (
-                      <SelectItem key={waiter.id} value={waiter.id}>{waiter.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">Create the waiter profile first, then link this login to it.</p>
-              </div>
-            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowTableDialog(false)}>Cancel</Button>
@@ -884,9 +870,23 @@ export default function StaffManagement() {
                 </SelectContent>
               </Select>
             </div>
+            {staffForm.role === 'waiter' && (
+              <div className="space-y-2">
+                <Label>Link Waiter Profile *</Label>
+                <Select value={staffForm.waiterId} onValueChange={(waiterId) => setStaffForm({ ...staffForm, waiterId })}>
+                  <SelectTrigger><SelectValue placeholder="Select waiter" /></SelectTrigger>
+                  <SelectContent>
+                    {waiters.filter((waiter) => waiter.isActive && !waiter.userId).map((waiter) => (
+                      <SelectItem key={waiter.id} value={waiter.id}>{waiter.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Create the waiter profile first, then link this login to it.</p>
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowStaffDialog(false)} disabled={staffSaving}>Cancel</Button>
+            <Button variant="outline" onClick={() => setShowStaffDialog(false) disabled={staffSaving}>Cancel</Button>
             <Button onClick={handleCreateStaff} disabled={staffSaving} className="gap-2">
               {staffSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
               {staffSaving ? 'Creating...' : 'Create User'}
