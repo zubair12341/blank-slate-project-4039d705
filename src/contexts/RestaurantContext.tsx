@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSupabaseData } from '@/hooks/useSupabaseData';
 import { useSupabaseActions } from '@/hooks/useSupabaseActions';
 import { addToSyncQueue, cacheTableData, getCachedData, removeQueuedMutationsForOrder } from '@/lib/offlineDb';
-import { createWorkflowOrder, addItemsToWorkflowOrder, makeOrderIdempotencyKey, settleOrderAtomic, createItemLess, cancelOrderControlled, type ItemLessReason } from '@/services/orderWorkflow';
+import { createWorkflowOrder, addItemsToWorkflowOrder, makeOrderIdempotencyKey, settleOrderAtomic, snapshotOrderProfit, createItemLess, cancelOrderControlled, type ItemLessReason } from '@/services/orderWorkflow';
 import {
   Ingredient,
   MenuItem,
@@ -941,6 +941,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
       idempotencyKey: makeOrderIdempotencyKey(),
       sourceDevice: 'POS',
     });
+    await snapshotOrderProfit(orderId);
 
     const safeTableId = explicitTableId || order.tableId || undefined;
     data.setOrders((prev: Order[]) => prev.map((o) => o.id === orderId

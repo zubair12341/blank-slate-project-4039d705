@@ -1,0 +1,1 @@
+-- Task 21 production migration adds orders.cost_at_sale, orders.gross_profit_at_sale, reports.profit permission, snapshot_order_profit RPC, and backfills completed/refunded historical orders from immutable order_items.unit_cost_at_sale. Applied to production as task21_profit_cost_snapshots.
