@@ -1,0 +1,2 @@
+-- Task 18 production migration: immutable audit_logs table, audit.view RLS permission, and order_activity_log mirror trigger.
+-- Applied to production with Supabase migration task18_general_audit_log and task18_mirror_order_audit.
