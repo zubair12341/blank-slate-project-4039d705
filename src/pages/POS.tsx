@@ -1719,14 +1719,13 @@ export default function POS() {
             <Button variant="outline" onClick={() => setItemLessTarget(null)}>Cancel</Button>
             <Button disabled={isItemLessSaving || (itemLessReason === 'other' && !itemLessDetails.trim())} onClick={async () => {
               if (!itemLessTarget) return;
-              const correctPassword = settings.security?.cancelOrderPassword || '12345';
-              if (itemLessPassword !== correctPassword) {
-                setItemLessPasswordError('Incorrect password');
+              if (!itemLessPassword.trim()) {
+                setItemLessPasswordError('Authorization password is required');
                 return;
               }
               setIsItemLessSaving(true);
               try {
-                await itemLess(itemLessTarget.id, itemLessQty, itemLessReason, itemLessDetails || undefined, itemLessDisposition);
+                await itemLess(itemLessTarget.id, itemLessQty, itemLessReason, itemLessDetails || undefined, itemLessDisposition, itemLessPassword);
                 toast.success('Item Less recorded in the audit trail.');
                 setItemLessTarget(null);
                 setItemLessDetails('');
@@ -1736,7 +1735,9 @@ export default function POS() {
                 // Do not reload from the previous render here: that stale snapshot
                 // was what made removed items reappear until a manual refresh.
               } catch (error) {
-                toast.error(error instanceof Error ? error.message : 'Failed to record Item Less');
+                const message = error instanceof Error ? error.message : 'Failed to record Item Less';
+                if (message.toLowerCase().includes('authorization password')) setItemLessPasswordError('Incorrect password');
+                else toast.error(message);
               } finally { setIsItemLessSaving(false); }
             }}>{isItemLessSaving ? 'Saving...' : 'Confirm Item Less'}</Button>
           </DialogFooter>
