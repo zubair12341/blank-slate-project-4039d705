@@ -33,6 +33,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { useRestaurant } from '@/contexts/RestaurantContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -88,6 +89,8 @@ export default function POS() {
   } = useRestaurant();
 
   const isMobile = useIsMobile();
+  const { userRole } = useAuth();
+  const isWaiter = userRole === 'waiter';
   const { isOnline, pendingSyncCount } = useOnlineStatus();
   const [showMobileCart, setShowMobileCart] = useState(false);
   const [showDiscountPanel, setShowDiscountPanel] = useState(false);
@@ -124,6 +127,8 @@ export default function POS() {
   const [isItemLessSaving, setIsItemLessSaving] = useState(false);
   const [itemLessPassword, setItemLessPassword] = useState('');
   const [itemLessPasswordError, setItemLessPasswordError] = useState('');
+  const [waiterContext, setWaiterContext] = useState<{ waiterId: string; name: string; tableIds: string[] } | null>(null);
+  const [waiterContextLoading, setWaiterContextLoading] = useState(false);
 
   const isEditingExistingOrder = !!currentEditingOrderId;
 
@@ -132,6 +137,39 @@ export default function POS() {
       setCustomers((data || []) as any);
     });
   }, []);
+
+  // Waiter accounts are POS-only and are bound to their own waiter profile and
+  // explicitly assigned tables. This is mirrored by RLS/RPC checks server-side.
+  useEffect(() => {
+    if (!isWaiter) {
+      setWaiterContext(null);
+      return;
+    }
+    let cancelled = false;
+    setWaiterContextLoading(true);
+    void supabase.rpc('get_my_waiter_context' as any).then(({ data, error }: any) => {
+      if (cancelled) return;
+      if (error || !data?.waiter_id || !data?.is_active) {
+        setWaiterContext(null);
+        toast.error('This waiter login is not linked to an active waiter profile.');
+      } else {
+        const context = {
+          waiterId: String(data.waiter_id),
+          name: String(data.name || 'Waiter'),
+          tableIds: Array.isArray(data.table_ids) ? data.table_ids.map(String) : [],
+        };
+        setWaiterContext(context);
+        setSelectedWaiterId(context.waiterId);
+        setOrderType('dine-in');
+      }
+      setWaiterContextLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [isWaiter]);
+
+  const visibleTables = isWaiter
+    ? tables.filter((table) => waiterContext?.tableIds.includes(table.id))
+    : tables;
 
   const persistCustomerForOrder = async (orderId: string) => {
     const name = customerName.trim();
@@ -245,6 +283,10 @@ export default function POS() {
   const pendingAdditions = isEditingExistingOrder ? getPendingAdditions() : cart;
 
   const handleTableSelect = (tableId: string) => {
+    if (isWaiter && !waiterContext?.tableIds.includes(tableId)) {
+      toast.error('This table is not assigned to your waiter account.');
+      return;
+    }
     const table = tables.find((t) => t.id === tableId);
     if (!table) return;
 
@@ -252,7 +294,7 @@ export default function POS() {
     // previous table/order cart to leak into the newly selected table.
     clearCart();
     setSelectedTableId(tableId);
-    setSelectedWaiterId('');
+    setSelectedWaiterId(isWaiter ? (waiterContext?.waiterId || '') : '');
     setCustomerName('');
     setSelectedCustomerId(null);
     setDiscountType('fixed');
@@ -278,10 +320,10 @@ export default function POS() {
 
   const handleBackToOrderType = () => {
     clearCart();
-    setOrderType(null);
+    setOrderType(isWaiter ? 'dine-in' : null);
     setSelectedTableId(null);
     setCustomerName('');
-    setSelectedWaiterId('');
+    setSelectedWaiterId(isWaiter ? (waiterContext?.waiterId || '') : '');
     setDiscountType('fixed');
     setDiscountValue(0);
     setDiscountReason('');
@@ -376,6 +418,7 @@ export default function POS() {
           discountType,
           discountValue,
           discountReason: discountValue > 0 ? discountReason : undefined,
+          sourceDevice: isWaiter ? 'WAITER_MOBILE' : 'POS',
         });
         if (order) {
           toast.success('New items added to the existing order!');
@@ -391,6 +434,7 @@ export default function POS() {
           discountType,
           discountValue,
           discountReason: discountValue > 0 ? discountReason : undefined,
+          sourceDevice: isWaiter ? 'WAITER_MOBILE' : 'POS',
         });
         if (order) {
           toast.success(`Order ${order.orderNumber} placed!`, {
@@ -749,7 +793,7 @@ export default function POS() {
             {isEditingExistingOrder ? 'Edit Order' : 'Current Order'}
           </h2>
           <div className="flex gap-2">
-            {cart.length > 0 && (
+            {cart.length > 0 && !isWaiter && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -760,7 +804,7 @@ export default function POS() {
                 Cancel
               </Button>
             )}
-            {cart.length > 0 && (
+            {cart.length > 0 && !isWaiter && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -830,6 +874,7 @@ export default function POS() {
                       variant="outline"
                       size="icon"
                       className="h-6 w-6"
+                      disabled={isWaiter && isEditingExistingOrder}
                       onClick={() => {
                         if (isEditingExistingOrder) {
                           const order = currentEditingOrderId ? getOrderById(currentEditingOrderId) : undefined;
@@ -860,6 +905,7 @@ export default function POS() {
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6 text-destructive hover:text-destructive"
+                      disabled={isWaiter && isEditingExistingOrder}
                       onClick={() => {
                         if (isEditingExistingOrder) {
                           const order = currentEditingOrderId ? getOrderById(currentEditingOrderId) : undefined;
@@ -884,7 +930,7 @@ export default function POS() {
       {/* Cart Summary */}
       <div className="shrink-0 border-t border-border px-3 py-2 space-y-1.5">
         <div className="space-y-1.5">
-          <div>
+          {!isWaiter && <div>
             <Button
               type="button"
               variant={discountAmount > 0 ? 'secondary' : 'outline'}
@@ -913,7 +959,7 @@ export default function POS() {
                   onChange={(e) => setDiscountReason(e.target.value)} />
               </div>
             )}
-          </div>
+          </div>}
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Subtotal</span>
             <span>{formatPrice(subtotal)}</span>
@@ -937,7 +983,7 @@ export default function POS() {
         </div>
 
         <div className="grid grid-cols-3 gap-1.5">
-          <Button
+          {!isWaiter && <Button
             variant="outline"
             className="w-full h-8 px-2 text-xs"
             onClick={handlePrintKitchenInvoice}
@@ -945,8 +991,8 @@ export default function POS() {
           >
             <ChefHat className="h-4 w-4 mr-2" />
             Kitchen
-          </Button>
-          {isEditingExistingOrder && currentEditingOrderId && (
+          </Button>}
+          {!isWaiter && isEditingExistingOrder && currentEditingOrderId && (
             <>
               <Button
                 variant="outline"
@@ -984,6 +1030,14 @@ export default function POS() {
 
 
   // POS entry flow: never expose menu/cart before an order type (and table for dine-in) is selected.
+  if (isWaiter && waiterContextLoading) {
+    return <div className="flex h-[calc(100vh-5rem)] items-center justify-center text-muted-foreground">Loading assigned tables...</div>;
+  }
+
+  if (isWaiter && !waiterContext) {
+    return <div className="mx-auto max-w-lg p-8 text-center"><h2 className="text-xl font-semibold">Waiter account needs setup</h2><p className="mt-2 text-muted-foreground">Ask an administrator to link this login to a waiter profile and assign tables.</p></div>;
+  }
+
   if (!orderType) {
     return (
       <div className="h-[calc(100vh-5rem)] animate-fade-in p-4 sm:p-6">
@@ -1011,13 +1065,13 @@ export default function POS() {
       <div className="h-[calc(100vh-5rem)] animate-fade-in p-4 sm:p-6 overflow-y-auto">
         <div className="mx-auto max-w-6xl">
           <div className="flex items-center gap-3 mb-6">
-            <Button variant="ghost" size="icon" onClick={() => setOrderType(null)}><ArrowLeft className="h-5 w-5" /></Button>
+            <Button variant="ghost" size="icon" onClick={() => isWaiter ? navigate('/pos') : setOrderType(null)}><ArrowLeft className="h-5 w-5" /></Button>
             <div><h1 className="text-2xl font-bold">Select Table</h1><p className="text-muted-foreground">Available and occupied tables are shown below.</p></div>
           </div>
           <div className="mb-5 flex flex-wrap gap-2 text-xs">
-            <span className="rounded-full border bg-card px-3 py-1.5">All {tables.length}</span>
-            <span className="rounded-full border bg-green-50 px-3 py-1.5 text-green-700">Available {tables.filter((t) => t.status !== 'occupied').length}</span>
-            <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-orange-700">Occupied {tables.filter((t) => t.status === 'occupied').length}</span>
+            <span className="rounded-full border bg-card px-3 py-1.5">All {visibleTables.length}</span>
+            <span className="rounded-full border bg-green-50 px-3 py-1.5 text-green-700">Available {visibleTables.filter((t) => t.status !== 'occupied').length}</span>
+            <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-orange-700">Occupied {visibleTables.filter((t) => t.status === 'occupied').length}</span>
           </div>
           <div className="space-y-7">
             {[
@@ -1025,7 +1079,7 @@ export default function POS() {
               { key: 'first', label: 'First Floor' },
               { key: 'family', label: 'Family / Upper Floor' },
             ].map((floor) => {
-              const floorTables = tables.filter((table) => table.floor === floor.key);
+              const floorTables = visibleTables.filter((table) => table.floor === floor.key);
               if (floorTables.length === 0) return null;
               return (
                 <section key={floor.key}>
@@ -1068,7 +1122,7 @@ export default function POS() {
               );
             })}
           </div>
-          {tables.length === 0 && <div className="rounded-lg border p-8 text-center text-muted-foreground">No restaurant tables are configured.</div>}
+          {visibleTables.length === 0 && <div className="rounded-lg border p-8 text-center text-muted-foreground">{isWaiter ? 'No tables are assigned to your waiter account.' : 'No restaurant tables are configured.'}</div>}
         </div>
       </div>
     );
@@ -1139,7 +1193,11 @@ export default function POS() {
         {/* Fast order controls */}
         {orderType === 'dine-in' && (
           <div className="mb-2 flex items-center gap-2">
-            <Select value={selectedWaiterId} onValueChange={(value) => {
+            {isWaiter ? (
+              <div className="flex h-10 w-full max-w-xs items-center gap-2 rounded-md border bg-muted/30 px-3 text-sm font-medium">
+                <Users className="h-4 w-4" /> {waiterContext?.name}
+              </div>
+            ) : <Select value={selectedWaiterId} onValueChange={(value) => {
               if (isEditingExistingOrder && selectedTableId) void handleReassignExistingOrder(selectedTableId, value);
               else setSelectedWaiterId(value);
             }} disabled={isReassigning}>
@@ -1152,8 +1210,8 @@ export default function POS() {
                   <SelectItem key={waiter.id} value={waiter.id}>{waiter.name}</SelectItem>
                 ))}
               </SelectContent>
-            </Select>
-            {isEditingExistingOrder && (
+            </Select>}
+            {!isWaiter && isEditingExistingOrder && (
               <Select value={selectedTableId || ''} onValueChange={(value) => {
                 if (!selectedWaiterId) { toast.error('Select waiter first.'); return; }
                 void handleReassignExistingOrder(value, selectedWaiterId);
@@ -1169,7 +1227,7 @@ export default function POS() {
                 </SelectContent>
               </Select>
             )}
-            <span className="text-xs font-medium text-destructive">Waiter required</span>
+            {!isWaiter && <span className="text-xs font-medium text-destructive">Waiter required</span>}
           </div>
         )}
 
