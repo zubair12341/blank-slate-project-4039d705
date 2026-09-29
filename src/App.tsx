@@ -31,6 +31,7 @@ import ItemLessReport from "./pages/ItemLessReport";
 import OrderQueue from "./pages/OrderQueue";
 import DeliveryOrders from "./pages/DeliveryOrders";
 import AuditLog from "./pages/AuditLog";
+import ItemWiseSales from "./pages/ItemWiseSales";
 
 const queryClient = new QueryClient();
 
@@ -78,6 +79,7 @@ const App = () => (
                 <Route path="/daily-costs" element={<DailyCosts />} />
                 <Route path="/daily-report" element={<DailyReport />} />
                 <Route path="/reports" element={<Reports />} />
+                <Route path="/item-wise-sales" element={<ItemWiseSales />} />
                 <Route path="/item-less-report" element={<ItemLessReport />} />
                 <Route path="/staff" element={<StaffManagement />} />
                 <Route path="/settings" element={<RestaurantSettings />} />
