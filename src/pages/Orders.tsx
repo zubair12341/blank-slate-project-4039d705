@@ -14,6 +14,7 @@ import { DataTablePagination } from '@/components/DataTablePagination';
 import { PasswordOTPInput } from '@/components/PasswordOTPInput';
 import { exportToCSV } from '@/lib/csvExport';
 import { printWithImages } from '@/hooks/usePrintWithImages';
+import { refundOrderControlled } from '@/services/orderWorkflow';
 
 export default function Orders() {
   const { orders, settings, cancelOrder, settleOrder } = useRestaurant();
@@ -32,6 +33,10 @@ export default function Orders() {
   const [cancelPassword, setCancelPassword] = useState('');
   const [passwordError, setPasswordError] = useState(false);
   const [orderToCancel, setOrderToCancel] = useState<Order | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [refundOrder, setRefundOrder] = useState<Order | null>(null);
+  const [refundReason, setRefundReason] = useState('');
+  const [refunding, setRefunding] = useState(false);
 
   const formatPrice = (price: number) => `${settings.currencySymbol} ${price.toLocaleString()}`;
 
@@ -87,6 +92,7 @@ export default function Orders() {
     setOrderToCancel(order);
     setCancelPassword('');
     setPasswordError(false);
+    setCancelReason('');
     setShowCancelDialog(true);
   };
 
@@ -101,15 +107,25 @@ export default function Orders() {
 
     try {
       // Cancel order - the workflow RPC also releases the linked dine-in table.
-      await cancelOrder(orderToCancel.id);
+      if (!cancelReason.trim()) { toast.error('Cancellation reason is required'); return; }
+      await cancelOrder(orderToCancel.id, cancelReason.trim());
       toast.success(`Order ${orderToCancel.orderNumber} cancelled`);
       setShowCancelDialog(false);
       setOrderToCancel(null);
       setCancelPassword('');
+      setCancelReason('');
       setSelectedOrder(null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to cancel order');
     }
+  };
+
+  const handleRefund = async () => {
+    if (!refundOrder || !refundReason.trim()) { toast.error('Refund reason is required'); return; }
+    setRefunding(true);
+    try { const result=await refundOrderControlled(refundOrder.id, refundReason.trim()); toast.success(`${refundOrder.orderNumber} refunded: ${formatPrice(Number(result.amount_refunded))}`); setRefundOrder(null); setRefundReason(''); setSelectedOrder(null); }
+    catch(error){ toast.error(error instanceof Error?error.message:'Failed to refund order'); }
+    finally{ setRefunding(false); }
   };
 
   const handleExportCSV = () => {
@@ -459,7 +475,10 @@ export default function Orders() {
                   <Printer className="h-4 w-4 mr-2" />
                   Print Invoice
                 </Button>
-                {selectedOrder.status !== 'cancelled' && (
+                {selectedOrder.paymentStatus === 'paid' && selectedOrder.status !== 'refunded' && (
+                  <Button variant="destructive" onClick={() => { setRefundOrder(selectedOrder); setRefundReason(''); }}>Refund</Button>
+                )}
+                {selectedOrder.status !== 'cancelled' && selectedOrder.status !== 'refunded' && selectedOrder.paymentStatus !== 'paid' && (
                   <Button variant="destructive" onClick={() => handleCancelRequest(selectedOrder)}>
                     <X className="h-4 w-4 mr-2" />
                     Cancel
@@ -470,6 +489,8 @@ export default function Orders() {
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!refundOrder} onOpenChange={open=>!open&&setRefundOrder(null)}><DialogContent><DialogHeader><DialogTitle>Refund Order</DialogTitle></DialogHeader><div className="space-y-3"><p className="text-sm text-muted-foreground">Refund all recorded paid amount for <strong>{refundOrder?.orderNumber}</strong>. This action is audited and cannot be repeated.</p><div><Label>Refund Reason</Label><Input value={refundReason} onChange={e=>setRefundReason(e.target.value)} placeholder="Required reason" /></div></div><DialogFooter><Button variant="outline" onClick={()=>setRefundOrder(null)}>Cancel</Button><Button variant="destructive" disabled={refunding||!refundReason.trim()} onClick={()=>void handleRefund()}>{refunding?'Processing...':'Confirm Refund'}</Button></DialogFooter></DialogContent></Dialog>
 
       {/* Cancel Password Dialog with OTP Input */}
       <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
@@ -484,6 +505,7 @@ export default function Orders() {
             <p className="text-sm text-muted-foreground text-center">
               Enter the 5-digit password to cancel order <strong>{orderToCancel?.orderNumber}</strong>
             </p>
+            <div className="space-y-2"><Label>Cancellation Reason</Label><Input value={cancelReason} onChange={e=>setCancelReason(e.target.value)} placeholder="Required reason" /></div>
             <PasswordOTPInput
               value={cancelPassword}
               onChange={(value) => { setCancelPassword(value); setPasswordError(false); }}
