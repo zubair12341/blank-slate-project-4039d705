@@ -165,7 +165,7 @@ interface RestaurantContextType {
     additions?: Array<{ menuItemId: string; variantId?: string; quantity: number; notes?: string }>;
   }) => Promise<Order | null>;
   settleOrder: (orderId: string, paymentMethod?: 'cash' | 'card' | 'mobile', tableId?: string) => Promise<void>;
-  itemLess: (orderItemId: string, quantity: number, reason: ItemLessReason, details?: string, disposition?: 'not_prepared' | 'waste' | 'returned') => Promise<void>;
+  itemLess: (orderItemId: string, quantity: number, reason: ItemLessReason, details: string | undefined, disposition: 'not_prepared' | 'waste' | 'returned', authorizationPassword: string) => Promise<void>;
   cancelOrder: (orderId: string) => Promise<void>;
   getTableOrder: (tableId: string) => Order | undefined;
   
@@ -950,6 +950,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     reason: ItemLessReason,
     details?: string,
     disposition: 'not_prepared' | 'waste' | 'returned' = 'not_prepared',
+    authorizationPassword: string,
   ) => {
     if (!navigator.onLine) throw new Error('Item Less requires an online connection.');
 
@@ -1001,7 +1002,7 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     }));
 
     try {
-      await createItemLess({ orderItemId, quantityLess: quantity, reasonCode: reason, reasonDetails: details, inventoryDisposition: disposition, sourceDevice: 'POS' });
+      await createItemLess({ orderItemId, quantityLess: quantity, reasonCode: reason, reasonDetails: details, inventoryDisposition: disposition, sourceDevice: 'POS', authorizationPassword });
       // Reconcile silently in the background; do not block the POS interaction.
       void fetchOrderWithItems(order.id).then((fresh) => {
         if (!fresh) return;
