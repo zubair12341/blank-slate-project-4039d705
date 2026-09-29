@@ -66,6 +66,7 @@ export default function MainLayout() {
     'settings': 'settings',
     'audit-log': 'audit.view',
     'item-wise-sales': 'reports.view',
+    'inventory-movements': 'inventory.view',
   };
 
   // Check route permission

@@ -32,6 +32,7 @@ import OrderQueue from "./pages/OrderQueue";
 import DeliveryOrders from "./pages/DeliveryOrders";
 import AuditLog from "./pages/AuditLog";
 import ItemWiseSales from "./pages/ItemWiseSales";
+import InventoryMovements from "./pages/InventoryMovements";
 
 const queryClient = new QueryClient();
 
@@ -70,6 +71,7 @@ const App = () => (
                 <Route path="/kitchen-stock" element={<KitchenStock />} />
                 <Route path="/direct-sales" element={<DirectStockSales />} />
                 <Route path="/stock-report" element={<StockReport />} />
+                <Route path="/inventory-movements" element={<InventoryMovements />} />
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/order-queue" element={<OrderQueue />} />
                 <Route path="/customer-ledger" element={<CustomerLedger />} />
