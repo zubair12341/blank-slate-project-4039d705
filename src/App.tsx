@@ -30,6 +30,7 @@ import CustomerLedger from "./pages/CustomerLedger";
 import ItemLessReport from "./pages/ItemLessReport";
 import OrderQueue from "./pages/OrderQueue";
 import DeliveryOrders from "./pages/DeliveryOrders";
+import AuditLog from "./pages/AuditLog";
 
 const queryClient = new QueryClient();
 
@@ -80,6 +81,7 @@ const App = () => (
                 <Route path="/item-less-report" element={<ItemLessReport />} />
                 <Route path="/staff" element={<StaffManagement />} />
                 <Route path="/settings" element={<RestaurantSettings />} />
+                <Route path="/audit-log" element={<AuditLog />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>
