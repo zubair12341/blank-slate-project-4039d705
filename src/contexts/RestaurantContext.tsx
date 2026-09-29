@@ -161,6 +161,8 @@ interface RestaurantContextType {
     discountType?: DiscountType;
     discountValue?: number;
     discountReason?: string;
+    sourceDevice?: 'POS' | 'WAITER_MOBILE' | 'SYSTEM' | 'ONLINE';
+    additions?: Array<{ menuItemId: string; variantId?: string; quantity: number; notes?: string }>;
   }) => Promise<Order | null>;
   settleOrder: (orderId: string, paymentMethod?: 'cash' | 'card' | 'mobile', tableId?: string) => Promise<void>;
   itemLess: (orderItemId: string, quantity: number, reason: ItemLessReason, details?: string, disposition?: 'not_prepared' | 'waste' | 'returned') => Promise<void>;
