@@ -113,6 +113,12 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
     }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [orders, orderType, searchQuery, timeFilter, statusFilter]);
 
+  const takeawayCounts = orderType === 'takeaway' ? {
+    in_progress: orders.filter(o => (o.fulfillmentType === 'takeaway' || o.orderType === 'takeaway') && !['completed','cancelled','refunded'].includes(o.status) && (o.operationalStatus || 'in_progress') === 'in_progress').length,
+    ready: orders.filter(o => (o.fulfillmentType === 'takeaway' || o.orderType === 'takeaway') && !['completed','cancelled','refunded'].includes(o.status) && o.operationalStatus === 'ready').length,
+    picked_up: orders.filter(o => (o.fulfillmentType === 'takeaway' || o.orderType === 'takeaway') && !['completed','cancelled','refunded'].includes(o.status) && o.operationalStatus === 'picked_up' && o.paymentStatus !== 'paid').length,
+  } : null;
+
   const formatPrice = (price: number) => `${settings.currencySymbol} ${price.toLocaleString()}`;
 
   const handleEditOrder = (order: Order) => {
@@ -204,11 +210,7 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
     } finally { setChangingStatusId(null); }
   };
 
-  const takeawayCounts = orderType === 'takeaway' ? {
-    in_progress: pendingOrders.filter(o => (o.operationalStatus || 'in_progress') === 'in_progress').length,
-    ready: pendingOrders.filter(o => o.operationalStatus === 'ready').length,
-    picked_up: pendingOrders.filter(o => o.operationalStatus === 'picked_up').length,
-  } : null;
+
 
   const typeConfig = {
     online: {
