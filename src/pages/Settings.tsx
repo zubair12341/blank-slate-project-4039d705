@@ -52,6 +52,7 @@ export default function RestaurantSettings() {
   // Security Settings
   const [cancelPassword, setCancelPassword] = useState(settings.security?.cancelOrderPassword || '12345');
   const [showPassword, setShowPassword] = useState(false);
+  const [discountPassword, setDiscountPassword] = useState('');
 
   // Notifications
   const [lowStockAlert, setLowStockAlert] = useState(true);
@@ -152,11 +153,14 @@ export default function RestaurantSettings() {
     toast.success('Invoice settings saved');
   };
 
-  const handleSaveSecuritySettings = () => {
+  const handleSaveSecuritySettings = async () => {
     if (cancelPassword.length !== 5 || !/^\d+$/.test(cancelPassword)) {
       toast.error('Password must be exactly 5 digits');
       return;
     }
+    if (discountPassword.length !== 5 || !/^\d+$/.test(discountPassword)) { toast.error('Discount password must be exactly 5 digits'); return; }
+    const { error } = await supabase.from('restaurant_settings').update({ security_discount_password: discountPassword } as any).eq('id', settings.id);
+    if (error) { toast.error(error.message); return; }
     updateSettings({
       security: {
         cancelOrderPassword: cancelPassword,
@@ -585,6 +589,12 @@ export default function RestaurantSettings() {
                 />
                 <p className="text-xs text-muted-foreground text-center">
                   This password is required to cancel any order from the Orders section. Only share with authorized staff.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Discount Authorization Password (5 digits)</Label>
+                <PasswordOTPInput value={discountPassword} onChange={(value) => setDiscountPassword(value.replace(/\D/g, ''))} />
+                <p className="text-sm text-muted-foreground">No discount can be submitted without this separate authorization password.
                 </p>
               </div>
               <div className="rounded-lg bg-warning/10 border border-warning/20 p-4">
