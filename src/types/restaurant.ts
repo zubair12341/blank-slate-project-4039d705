@@ -125,6 +125,11 @@ export interface Order {
   paymentMethod: 'cash' | 'card' | 'mobile';
   status: 'pending' | 'completed' | 'cancelled' | 'refunded';
   customerName?: string;
+  customerPhone?: string;
+  deliveryAddress?: string;
+  riderId?: string;
+  riderName?: string;
+  dispatchedAt?: Date;
   tableId?: string;
   tableNumber?: number;
   waiterId?: string;
