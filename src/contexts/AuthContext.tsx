@@ -14,6 +14,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
+  capabilities: Set<string>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -59,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userRole, setUserRole] = useState<AppRole | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [capabilities, setCapabilities] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     // Set up auth state listener FIRST
@@ -118,6 +120,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (roleData?.role) {
         setUserRole(roleData.role as AppRole);
       }
+
+      const { data: capabilityRows } = await supabase.rpc('get_my_permissions' as any);
+      setCapabilities(new Set(((capabilityRows as any[]) || []).map((row:any)=>row.permission_key)));
 
       // Fetch user profile
       const { data: profileData } = await supabase
@@ -179,12 +184,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
     setUserRole(null);
     setUserName(null);
+    setCapabilities(new Set());
     clearCachedAuthDetails();
     toast.success('Logged out successfully');
   };
 
   const hasPermission = (permission: string): boolean => {
     if (!userRole) return false;
+    if (permission.includes('.')) return capabilities.has(permission);
     return rolePermissions[userRole].includes(permission);
   };
 
@@ -198,6 +205,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signIn,
       signOut,
       hasPermission,
+      capabilities,
     }}>
       {children}
     </AuthContext.Provider>
