@@ -21,6 +21,7 @@ import {
   WalletCards,
   ReceiptText,
   Bike,
+  ShieldCheck,
 } from 'lucide-react';
 import { useRestaurant } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -60,6 +61,7 @@ const navigation = [
   { name: 'Reports', href: '/reports', icon: BarChart3, permission: 'reports.view' },
   { name: 'Item Less Report', href: '/item-less-report', icon: FileText, permission: 'item_less.report' },
   { name: 'Staff', href: '/staff', icon: Users, permission: 'staff.manage' },
+  { name: 'Audit Log', href: '/audit-log', icon: ShieldCheck, permission: 'audit.view' },
   { name: 'Settings', href: '/settings', icon: Settings, permission: 'settings.manage' },
 ];
 
