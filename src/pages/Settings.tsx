@@ -53,6 +53,7 @@ export default function RestaurantSettings() {
   const [cancelPassword, setCancelPassword] = useState(settings.security?.cancelOrderPassword || '12345');
   const [showPassword, setShowPassword] = useState(false);
   const [discountPassword, setDiscountPassword] = useState('');
+  const [discountPasswordLoaded, setDiscountPasswordLoaded] = useState(false);
 
   // Notifications
   const [lowStockAlert, setLowStockAlert] = useState(true);
@@ -153,13 +154,15 @@ export default function RestaurantSettings() {
     toast.success('Invoice settings saved');
   };
 
+  if (!discountPasswordLoaded) { void supabase.from('restaurant_settings').select('security_discount_password').limit(1).single().then(({data})=>{ if ((data as any)?.security_discount_password) setDiscountPassword((data as any).security_discount_password); setDiscountPasswordLoaded(true); }); }
+
   const handleSaveSecuritySettings = async () => {
     if (cancelPassword.length !== 5 || !/^\d+$/.test(cancelPassword)) {
       toast.error('Password must be exactly 5 digits');
       return;
     }
     if (discountPassword.length !== 5 || !/^\d+$/.test(discountPassword)) { toast.error('Discount password must be exactly 5 digits'); return; }
-    const { error } = await supabase.from('restaurant_settings').update({ security_discount_password: discountPassword } as any).eq('id', settings.id);
+    const { error } = await supabase.from('restaurant_settings').update({ security_discount_password: discountPassword } as any).limit(1);
     if (error) { toast.error(error.message); return; }
     updateSettings({
       security: {
