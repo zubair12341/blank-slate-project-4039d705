@@ -260,3 +260,5 @@ export async function authorizeDiscount(input:{password:string;discountType:'fix
  const {data,error}=await rpc('authorize_discount',{p_password:input.password,p_discount_type:input.discountType,p_discount_value:input.discountValue,p_subtotal:input.subtotal,p_reason:input.reason});
  if(error) throw error; return data as {authorized:boolean;discount_amount:number};
 }
+
+export async function snapshotOrderProfit(orderId:string){const {data,error}=await rpc('snapshot_order_profit',{p_order_id:orderId});if(error)throw error;return data as {cost_at_sale:number;gross_profit_at_sale:number};}
