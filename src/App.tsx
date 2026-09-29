@@ -27,6 +27,7 @@ import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 import CustomerLedger from "./pages/CustomerLedger";
+import ItemLessReport from "./pages/ItemLessReport";
 
 const queryClient = new QueryClient();
 
@@ -72,6 +73,7 @@ const App = () => (
                 <Route path="/daily-costs" element={<DailyCosts />} />
                 <Route path="/daily-report" element={<DailyReport />} />
                 <Route path="/reports" element={<Reports />} />
+                <Route path="/item-less-report" element={<ItemLessReport />} />
                 <Route path="/staff" element={<StaffManagement />} />
                 <Route path="/settings" element={<RestaurantSettings />} />
               </Route>
