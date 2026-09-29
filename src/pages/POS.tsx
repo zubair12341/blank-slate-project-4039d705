@@ -214,7 +214,7 @@ export default function POS() {
     }
     setIsReassigning(true);
     try {
-      await reassignDineInOrder({ orderId: currentEditingOrderId, tableId: nextTableId, waiterId: nextWaiterId });
+      await reassignDineInOrder({ orderId: currentEditingOrderId, tableId: nextTableId, waiterId: nextWaiterId, sourceDevice: isWaiter ? 'WAITER_MOBILE' : 'POS' });
       setSelectedTableId(nextTableId);
       setSelectedWaiterId(nextWaiterId);
       await refetch();
