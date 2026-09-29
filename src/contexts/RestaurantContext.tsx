@@ -161,6 +161,8 @@ interface RestaurantContextType {
     discountType?: DiscountType;
     discountValue?: number;
     discountReason?: string;
+    sourceDevice?: 'POS' | 'WAITER_MOBILE' | 'SYSTEM' | 'ONLINE';
+    additions?: Array<{ menuItemId: string; variantId?: string; quantity: number; notes?: string }>;
   }) => Promise<Order | null>;
   settleOrder: (orderId: string, paymentMethod?: 'cash' | 'card' | 'mobile', tableId?: string) => Promise<void>;
   itemLess: (orderItemId: string, quantity: number, reason: ItemLessReason, details?: string, disposition?: 'not_prepared' | 'waste' | 'returned') => Promise<void>;
@@ -748,26 +750,25 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
         const existingOrder = data.orders.find((o) => o.id === orderId);
         if (!existingOrder) throw new Error('Existing order not found');
 
-        const existingByKey = existingOrder.items.reduce((totals, item) => {
-          const key = getOrderItemKey(item.menuItemId, item.variantId);
-          totals.set(key, (totals.get(key) || 0) + Number(item.finalQuantity ?? item.quantity));
-          return totals;
-        }, new Map<string, number>());
-
-        const additions = cartSnapshot.flatMap((item) => {
-          const key = getOrderItemKey(item.menuItem.id, item.variant?.id);
-          const existingQty = existingByKey.get(key) || 0;
-          if (item.quantity < existingQty) {
-            throw new Error('Existing item quantity cannot be reduced here. Use Item Less.');
-          }
-          const quantity = item.quantity - existingQty;
-          return quantity > 0 ? [{
-            menuItemId: item.menuItem.id,
-            variantId: item.variant?.id,
-            quantity,
-            notes: item.notes,
-          }] : [];
-        });
+        // POS captures the quantities that existed when editing started. Prefer its
+        // explicit delta so a simultaneous waiter/cashier addition of the same item
+        // cannot make this device accidentally submit zero or a negative difference.
+        const additions = Array.isArray(orderDetails.additions)
+          ? orderDetails.additions.filter((item: any) => Number(item.quantity) > 0)
+          : (() => {
+              const existingByKey = existingOrder.items.reduce((totals, item) => {
+                const key = getOrderItemKey(item.menuItemId, item.variantId);
+                totals.set(key, (totals.get(key) || 0) + Number(item.finalQuantity ?? item.quantity));
+                return totals;
+              }, new Map<string, number>());
+              return cartSnapshot.flatMap((item) => {
+                const key = getOrderItemKey(item.menuItem.id, item.variant?.id);
+                const existingQty = existingByKey.get(key) || 0;
+                if (item.quantity < existingQty) throw new Error('Existing item quantity cannot be reduced here. Use Item Less.');
+                const quantity = item.quantity - existingQty;
+                return quantity > 0 ? [{ menuItemId: item.menuItem.id, variantId: item.variant?.id, quantity, notes: item.notes }] : [];
+              });
+            })();
 
         if (additions.length === 0) {
           throw new Error('No new items were added to this order.');
