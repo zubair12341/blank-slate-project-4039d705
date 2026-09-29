@@ -98,6 +98,7 @@ export default function POS() {
   const [orderType, setOrderType] = useState<OrderTypeSelection>(null);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [tableStatusFilter, setTableStatusFilter] = useState<'all' | 'available' | 'occupied'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCheckout, setShowCheckout] = useState(false);
   const [showKitchenInvoice, setShowKitchenInvoice] = useState(false);
@@ -192,6 +193,7 @@ export default function POS() {
   const visibleTables = isWaiter
     ? tables.filter((table) => waiterContext?.tableIds.includes(table.id))
     : tables;
+  const filteredTables = visibleTables.filter((table) => tableStatusFilter === 'all' || (tableStatusFilter === 'occupied' ? table.status === 'occupied' : table.status !== 'occupied'));
 
   const persistCustomerForOrder = async (orderId: string) => {
     const name = customerName.trim();
@@ -212,7 +214,7 @@ export default function POS() {
     }
     setIsReassigning(true);
     try {
-      await reassignDineInOrder({ orderId: currentEditingOrderId, tableId: nextTableId, waiterId: nextWaiterId });
+      await reassignDineInOrder({ orderId: currentEditingOrderId, tableId: nextTableId, waiterId: nextWaiterId, sourceDevice: isWaiter ? 'WAITER_MOBILE' : 'POS' });
       setSelectedTableId(nextTableId);
       setSelectedWaiterId(nextWaiterId);
       await refetch();
@@ -1101,9 +1103,9 @@ export default function POS() {
             <div><h1 className="text-2xl font-bold">Select Table</h1><p className="text-muted-foreground">Available and occupied tables are shown below.</p></div>
           </div>
           <div className="mb-5 flex flex-wrap gap-2 text-xs">
-            <span className="rounded-full border bg-card px-3 py-1.5">All {visibleTables.length}</span>
-            <span className="rounded-full border bg-green-50 px-3 py-1.5 text-green-700">Available {visibleTables.filter((t) => t.status !== 'occupied').length}</span>
-            <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-orange-700">Occupied {visibleTables.filter((t) => t.status === 'occupied').length}</span>
+            <Button size="sm" variant={tableStatusFilter === 'all' ? 'default' : 'outline'} onClick={() => setTableStatusFilter('all')}>All {visibleTables.length}</Button>
+            <Button size="sm" variant={tableStatusFilter === 'available' ? 'default' : 'outline'} onClick={() => setTableStatusFilter('available')}>Available {visibleTables.filter((t) => t.status !== 'occupied').length}</Button>
+            <Button size="sm" variant={tableStatusFilter === 'occupied' ? 'default' : 'outline'} onClick={() => setTableStatusFilter('occupied')}>Occupied {visibleTables.filter((t) => t.status === 'occupied').length}</Button>
           </div>
           <div className="space-y-7">
             {[
@@ -1111,14 +1113,16 @@ export default function POS() {
               { key: 'first', label: 'First Floor' },
               { key: 'family', label: 'Family / Upper Floor' },
             ].map((floor) => {
-              const floorTables = visibleTables.filter((table) => table.floor === floor.key);
+              const floorTables = filteredTables.filter((table) => table.floor === floor.key);
               if (floorTables.length === 0) return null;
               return (
                 <section key={floor.key}>
                   <h2 className="mb-3 text-base font-semibold">{floor.label}</h2>
                   <div className="flex flex-wrap gap-x-5 gap-y-6">
-                    {floorTables.map((table) => (
-                      <div key={table.id} className="flex w-28 flex-col items-center">
+                    {floorTables.map((table) => {
+                      const linkedOrder = table.currentOrderId ? getOrderById(table.currentOrderId) : undefined;
+                      return (
+                      <div key={table.id} className="flex w-36 flex-col items-center">
                         <button
                           onClick={() => handleTableSelect(table.id)}
                           className={cn(
@@ -1131,6 +1135,7 @@ export default function POS() {
                           <span className="text-base font-bold">Table {table.number}</span>
                           <span className="mt-1 text-[11px] font-medium">{table.status === 'occupied' ? 'Occupied' : 'Available'}</span>
                         </button>
+                        {linkedOrder && <div className="mt-1 w-full text-center text-[10px] leading-4 text-muted-foreground"><div className="truncate font-medium text-foreground">{linkedOrder.orderNumber}</div><div className="truncate">{linkedOrder.waiterName || 'No waiter'} · Rs. {Number(linkedOrder.total || 0).toLocaleString()}</div></div>}
                         {table.status === 'occupied' && table.currentOrderId ? (
                           <Button
                             variant="ghost"
@@ -1148,13 +1153,14 @@ export default function POS() {
                           </Button>
                         ) : <div className="h-8" />}
                       </div>
-                    ))}
+                    )})}
                   </div>
                 </section>
               );
             })}
           </div>
           {visibleTables.length === 0 && <div className="rounded-lg border p-8 text-center text-muted-foreground">{isWaiter ? 'No tables are assigned to your waiter account.' : 'No restaurant tables are configured.'}</div>}
+          {visibleTables.length > 0 && filteredTables.length === 0 && <div className="rounded-lg border p-8 text-center text-muted-foreground">No tables match this status filter.</div>}
         </div>
       </div>
     );
@@ -1253,7 +1259,7 @@ export default function POS() {
                   <SelectValue placeholder="Change Table" />
                 </SelectTrigger>
                 <SelectContent>
-                  {tables.filter((table) => table.id === selectedTableId || (!table.currentOrderId && table.status !== 'occupied')).map((table) => (
+                  {visibleTables.filter((table) => table.id === selectedTableId || (!table.currentOrderId && table.status !== 'occupied')).map((table) => (
                     <SelectItem key={table.id} value={table.id}>Table {table.number}</SelectItem>
                   ))}
                 </SelectContent>
