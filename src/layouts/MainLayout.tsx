@@ -44,6 +44,7 @@ export default function MainLayout() {
     'dashboard': 'dashboard',
     'pos': 'pos',
     'online-orders': 'orders',
+    'delivery-orders': 'orders',
     'takeaway-orders': 'orders',
     'food-items': 'food-items',
     'menu': 'food-items',
