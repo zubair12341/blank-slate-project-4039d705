@@ -155,16 +155,14 @@ export default function InProgressOrders({ orderType }: InProgressOrdersProps) {
   };
 
   const handleCancelOrder = async () => {
-    const correctPassword = settings.security?.cancelOrderPassword || '12345';
-    
-    if (cancelPassword !== correctPassword) {
-      setCancelPasswordError('Incorrect password');
-      return;
-    }
-
-    if (selectedOrder) {
+if (selectedOrder) {
       if (!cancelReason.trim()) { toast.error('Cancellation reason is required'); return; }
-      await cancelOrder(selectedOrder.id, cancelReason.trim());
+      try {
+        await cancelOrder(selectedOrder.id, cancelReason.trim(), cancelPassword);
+      } catch (error) {
+        setCancelPasswordError(error instanceof Error ? error.message : 'Cancellation authorization failed');
+        return;
+      }
       toast.success(`Order ${selectedOrder.orderNumber} cancelled`);
     }
 

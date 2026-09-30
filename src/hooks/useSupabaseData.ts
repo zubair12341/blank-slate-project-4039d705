@@ -111,7 +111,8 @@ const transformSettings = (row: any): RestaurantSettings => ({
     logoUrl: row.invoice_logo_url || '',
   },
   security: {
-    cancelOrderPassword: row.security_cancel_password,
+    cancelPinConfigured: Boolean(row.security_cancel_pin_configured),
+    discountPinConfigured: Boolean(row.security_discount_pin_configured),
   },
   businessDay: {
     cutoffHour: row.business_day_cutoff_hour,

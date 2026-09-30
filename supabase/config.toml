@@ -1,4 +1,22 @@
 project_id = "kbcsrbacakarlrubafpm"
 
+[functions.create-admin]
+verify_jwt = true
+
 [functions.table-update]
-verify_jwt = false
+verify_jwt = true
+
+[functions.export-database]
+verify_jwt = true
+
+[functions.export-sql]
+verify_jwt = true
+
+[functions.fill-recipes]
+verify_jwt = true
+
+[functions.import-menu]
+verify_jwt = true
+
+[functions.manage-staff]
+verify_jwt = true

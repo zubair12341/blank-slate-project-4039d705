@@ -12,7 +12,6 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { SecuritySettings } from '@/types/restaurant';
 import { PasswordOTPInput } from '@/components/PasswordOTPInput';
 import { getPrintBridgeHealth, sendBridgeTestPrint, getLocalPrintBridgeToken, setLocalPrintBridgeToken } from '@/services/localPrintBridge';
 
@@ -50,10 +49,8 @@ export default function RestaurantSettings() {
   const [logoUrl, setLogoUrl] = useState(settings.invoice?.logoUrl || '');
 
   // Security Settings
-  const [cancelPassword, setCancelPassword] = useState(settings.security?.cancelOrderPassword || '12345');
-  const [showPassword, setShowPassword] = useState(false);
+  const [cancelPassword, setCancelPassword] = useState('');
   const [discountPassword, setDiscountPassword] = useState('');
-  const [discountPasswordLoaded, setDiscountPasswordLoaded] = useState(false);
 
   // Notifications
   const [lowStockAlert, setLowStockAlert] = useState(true);
@@ -154,22 +151,20 @@ export default function RestaurantSettings() {
     toast.success('Invoice settings saved');
   };
 
-  if (!discountPasswordLoaded) { void supabase.from('restaurant_settings').select('security_discount_password').limit(1).single().then(({data})=>{ if ((data as any)?.security_discount_password) setDiscountPassword((data as any).security_discount_password); setDiscountPasswordLoaded(true); }); }
-
   const handleSaveSecuritySettings = async () => {
     if (cancelPassword.length !== 5 || !/^\d+$/.test(cancelPassword)) {
       toast.error('Password must be exactly 5 digits');
       return;
     }
     if (discountPassword.length !== 5 || !/^\d+$/.test(discountPassword)) { toast.error('Discount password must be exactly 5 digits'); return; }
-    const { error } = await supabase.from('restaurant_settings').update({ security_discount_password: discountPassword } as any).limit(1);
-    if (error) { toast.error(error.message); return; }
-    updateSettings({
-      security: {
-        cancelOrderPassword: cancelPassword,
-      },
+    const { error } = await supabase.rpc('set_security_pins' as any, {
+      p_cancel_pin: cancelPassword,
+      p_discount_pin: discountPassword,
     });
-    toast.success('Security settings saved');
+    if (error) { toast.error(error.message); return; }
+    setCancelPassword('');
+    setDiscountPassword('');
+    toast.success('Security PINs updated securely');
   };
 
   const handleCheckPrintBridge = async (testPrint = false) => {
@@ -591,14 +586,13 @@ export default function RestaurantSettings() {
                   length={5}
                 />
                 <p className="text-xs text-muted-foreground text-center">
-                  This password is required to cancel any order from the Orders section. Only share with authorized staff.
+                  Enter a new cancellation PIN. The current PIN is never sent back to the browser.
                 </p>
               </div>
               <div className="space-y-2">
                 <Label>Discount Authorization Password (5 digits)</Label>
                 <PasswordOTPInput value={discountPassword} onChange={(value) => setDiscountPassword(value.replace(/\D/g, ''))} />
-                <p className="text-sm text-muted-foreground">No discount can be submitted without this separate authorization password.
-                </p>
+                <p className="text-sm text-muted-foreground">Enter a new discount PIN. The current PIN is stored only as a server-side hash and is never displayed.</p>
               </div>
               <div className="rounded-lg bg-warning/10 border border-warning/20 p-4">
                 <p className="text-sm text-warning font-medium">⚠️ Important</p>
