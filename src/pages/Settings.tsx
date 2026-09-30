@@ -152,14 +152,15 @@ export default function RestaurantSettings() {
   };
 
   const handleSaveSecuritySettings = async () => {
-    if (cancelPassword.length !== 5 || !/^\d+$/.test(cancelPassword)) {
-      toast.error('Password must be exactly 5 digits');
+    if (cancelPassword && (cancelPassword.length !== 5 || !/^\d+$/.test(cancelPassword))) {
+      toast.error('Cancel Order PIN must be exactly 5 digits');
       return;
     }
-    if (discountPassword.length !== 5 || !/^\d+$/.test(discountPassword)) { toast.error('Discount password must be exactly 5 digits'); return; }
+    if (discountPassword && (discountPassword.length !== 5 || !/^\d+$/.test(discountPassword))) { toast.error('Discount PIN must be exactly 5 digits'); return; }
+    if (!cancelPassword && !discountPassword) { toast.error('Enter a new cancellation PIN, discount PIN, or both.'); return; }
     const { error } = await supabase.rpc('set_security_pins' as any, {
-      p_cancel_pin: cancelPassword,
-      p_discount_pin: discountPassword,
+      p_cancel_pin: cancelPassword || null,
+      p_discount_pin: discountPassword || null,
     });
     if (error) { toast.error(error.message); return; }
     setCancelPassword('');
