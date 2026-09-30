@@ -1,4 +1,3 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -10,98 +9,40 @@ type Body =
   | { action: "occupy"; tableId: string; orderId: string }
   | { action: "free"; tableId: string };
 
-serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
-
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const url = Deno.env.get("SUPABASE_URL")!;
+    const anon = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
+    const caller = createClient(url, anon, { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false, autoRefreshToken: false } });
+    const { data: { user } } = await caller.auth.getUser();
+    if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    // Optional auth check - allow service-to-service calls without auth
-    // This function uses service role key so it's already secure
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-
-    if (token) {
-      // Validate token if provided (ensures only authenticated users can call this)
-      const { data: userRes, error: userErr } = await supabaseAdmin.auth.getUser(token);
-      if (userErr || !userRes?.user) {
-        console.log("Token validation failed, but allowing call with service role");
-      }
-    }
+    const admin = createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { data: permitted } = await admin.rpc("has_permission", { _user_id: user.id, _permission_key: "order.edit" });
+    const { data: createPermitted } = await admin.rpc("has_permission", { _user_id: user.id, _permission_key: "order.create" });
+    if (!permitted && !createPermitted) return new Response(JSON.stringify({ error: "Order/table update permission required" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const body = (await req.json()) as Body;
+    if (!body?.tableId) return new Response(JSON.stringify({ error: "tableId is required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (body.action === "occupy" && !body.orderId) return new Response(JSON.stringify({ error: "orderId is required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    if (!body?.tableId) {
-      return new Response(
-        JSON.stringify({ success: false, error: "tableId is required" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
-      );
-    }
+    const update = body.action === "occupy"
+      ? { status: "occupied", current_order_id: body.orderId }
+      : body.action === "free"
+        ? { status: "available", current_order_id: null }
+        : null;
+    if (!update) return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    if (body.action === "occupy") {
-      if (!body.orderId) {
-        return new Response(
-          JSON.stringify({ success: false, error: "orderId is required" }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
-        );
-      }
-
-      const { error } = await supabaseAdmin
-        .from("restaurant_tables")
-        .update({ status: "occupied", current_order_id: body.orderId })
-        .eq("id", body.tableId);
-
-      if (error) {
-        return new Response(
-          JSON.stringify({ success: false, error: error.message }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
-        );
-      }
-
-      return new Response(JSON.stringify({ success: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (body.action === "free") {
-      const { error } = await supabaseAdmin
-        .from("restaurant_tables")
-        .update({ status: "available", current_order_id: null })
-        .eq("id", body.tableId);
-
-      if (error) {
-        return new Response(
-          JSON.stringify({ success: false, error: error.message }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
-        );
-      }
-
-      return new Response(JSON.stringify({ success: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    return new Response(
-      JSON.stringify({ success: false, error: "Invalid action" }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
-    );
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error("table-update error:", error);
-    return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 },
-    );
+    const { error } = await admin.from("restaurant_tables").update(update).eq("id", body.tableId);
+    if (error) throw error;
+    return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return new Response(JSON.stringify({ error: message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
