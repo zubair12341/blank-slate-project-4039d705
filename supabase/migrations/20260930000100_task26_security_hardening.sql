@@ -23,6 +23,8 @@ on conflict (id) do update set
   cancel_pin_hash = coalesce(public.security_credentials.cancel_pin_hash, excluded.cancel_pin_hash),
   discount_pin_hash = coalesce(public.security_credentials.discount_pin_hash, excluded.discount_pin_hash);
 
+alter table public.restaurant_settings alter column security_cancel_password drop not null;
+alter table public.restaurant_settings alter column security_discount_password drop not null;
 alter table public.restaurant_settings add column if not exists security_cancel_pin_configured boolean not null default false;
 alter table public.restaurant_settings add column if not exists security_discount_pin_configured boolean not null default false;
 update public.restaurant_settings
