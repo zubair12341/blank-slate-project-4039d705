@@ -243,8 +243,8 @@ export async function reassignDineInOrder(input: { orderId: string; tableId: str
 }
 
 
-export async function cancelOrderControlled(orderId: string, reason: string) {
-  const { data, error } = await rpc('cancel_order_controlled', { p_order_id: orderId, p_reason: reason.trim(), p_source_device: 'POS' });
+export async function cancelOrderControlled(orderId: string, reason: string, authorizationPassword?: string) {
+  const { data, error } = await rpc('cancel_order_controlled', { p_order_id: orderId, p_reason: reason.trim(), p_source_device: 'POS', p_authorization_password: authorizationPassword ?? null });
   if (error) throw error;
   return data as { order_id:string; status:string; operational_status:string; reason:string };
 }
