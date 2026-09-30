@@ -58,6 +58,12 @@ serve(async (req) => {
 
     const { action, ...payload } = await req.json();
 
+    if (action === "create" && payload.role === "admin") {
+      return new Response(JSON.stringify({ error: "Creating additional administrators through this endpoint is disabled" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 403,
+      });
+    }
+
     // LIST all staff users
     if (action === "list") {
       const { data: usersData } = await adminClient.auth.admin.listUsers();
@@ -186,6 +192,11 @@ serve(async (req) => {
     // UPDATE role
     if (action === "update_role") {
       const { userId, role } = payload;
+      if (role === "admin") {
+        return new Response(JSON.stringify({ error: "Promoting users to administrator through this endpoint is disabled" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 403,
+        });
+      }
       if (!userId || !role) {
         return new Response(
           JSON.stringify({ error: "userId and role required" }),
