@@ -98,17 +98,10 @@ export default function Orders() {
 
   const handleConfirmCancel = async () => {
     if (!orderToCancel) return;
-    
-    if (cancelPassword !== settings.security?.cancelOrderPassword) {
-      setPasswordError(true);
-      toast.error('Invalid password');
-      return;
-    }
-
-    try {
+try {
       // Cancel order - the workflow RPC also releases the linked dine-in table.
       if (!cancelReason.trim()) { toast.error('Cancellation reason is required'); return; }
-      await cancelOrder(orderToCancel.id, cancelReason.trim());
+      await cancelOrder(orderToCancel.id, cancelReason.trim(), cancelPassword);
       toast.success(`Order ${orderToCancel.orderNumber} cancelled`);
       setShowCancelDialog(false);
       setOrderToCancel(null);
@@ -116,6 +109,7 @@ export default function Orders() {
       setCancelReason('');
       setSelectedOrder(null);
     } catch (error) {
+      setPasswordError(true);
       toast.error(error instanceof Error ? error.message : 'Failed to cancel order');
     }
   };
