@@ -363,17 +363,15 @@ export default function POS() {
   };
 
   const handleCancelOrder = async () => {
-    const correctPassword = settings.security?.cancelOrderPassword || '12345';
-    
-    if (cancelPassword !== correctPassword) {
-      setCancelPasswordError('Incorrect password');
-      return;
-    }
-    
-    if (currentEditingOrderId) {
+if (currentEditingOrderId) {
       // Cancel existing order - cancelOrder will also free the table
       if (!cancelReason.trim()) { toast.error('Cancellation reason is required'); return; }
-      await cancelOrder(currentEditingOrderId, cancelReason.trim());
+      try {
+        await cancelOrder(currentEditingOrderId, cancelReason.trim(), cancelPassword);
+      } catch (error) {
+        setCancelPasswordError(error instanceof Error ? error.message : 'Cancellation authorization failed');
+        return;
+      }
       toast.success('Order cancelled');
     } else {
       // Just clear the cart for new orders
