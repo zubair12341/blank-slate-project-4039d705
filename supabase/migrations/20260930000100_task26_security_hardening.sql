@@ -162,3 +162,14 @@ create policy "Payment permission can manage receipts" on public.customer_receip
 -- Plaintext columns remain only for migration compatibility and are no longer selectable/writable by clients.
 revoke select(security_cancel_password,security_discount_password), update(security_cancel_password,security_discount_password) on public.restaurant_settings from anon,authenticated;
 grant select(id,name,address,phone,tax_rate,currency,currency_symbol,invoice_title,invoice_footer,invoice_show_logo,invoice_logo_url,invoice_gst_enabled,business_day_cutoff_hour,business_day_cutoff_minute,created_at,updated_at,security_cancel_pin_configured,security_discount_pin_configured) on public.restaurant_settings to authenticated;
+
+-- Remove anonymous/public execution from internal SECURITY DEFINER helpers and trigger functions.
+revoke all on function public.capture_stock_record_movement() from public,anon,authenticated;
+revoke all on function public.handle_first_admin() from public,anon,authenticated;
+revoke all on function public.handle_new_user() from public,anon,authenticated;
+revoke all on function public.mirror_order_activity_to_audit() from public,anon,authenticated;
+revoke all on function public.get_user_role(uuid) from public,anon;
+grant execute on function public.get_user_role(uuid) to authenticated;
+revoke all on function public.has_role(uuid,public.app_role) from public,anon;
+grant execute on function public.has_role(uuid,public.app_role) to authenticated;
+alter function public.prevent_audit_log_mutation() set search_path=public;
