@@ -441,7 +441,7 @@ if (currentEditingOrderId) {
       if (!discountReason.trim()) { toast.error('Discount reason is required.'); return; }
       if (discountPassword.length !== 5) { setDiscountPasswordError('Enter the 5-digit discount password'); toast.error('Discount authorization password is required.'); return; }
       try { await authorizeDiscount({password:discountPassword,discountType,discountValue,subtotal,reason:discountReason}); setDiscountPasswordError(''); }
-      catch(error){ setDiscountPasswordError('Incorrect or unauthorized discount password'); toast.error(error instanceof Error?error.message:'Discount authorization failed'); return; }
+      catch(error){ setDiscountPasswordError(error instanceof Error ? error.message : 'Discount authorization failed'); toast.error(error instanceof Error?error.message:'Discount authorization failed'); return; }
     }
 
     setIsPlacingOrder(true);
@@ -1745,7 +1745,7 @@ if (currentEditingOrderId) {
             </div>
             <div className="space-y-2">
               <Label>Authorization Password</Label>
-              <Input type="password" inputMode="numeric" maxLength={5} value={itemLessPassword} onChange={(e) => { setItemLessPassword(e.target.value); setItemLessPasswordError(''); }} placeholder="Enter 5-digit password" className={itemLessPasswordError ? 'border-destructive' : ''} />
+              <Input type="password" inputMode="numeric" maxLength={5} value={itemLessPassword} onChange={(e) => { setItemLessPassword(e.target.value.replace(/\D/g, '').slice(0, 5)); setItemLessPasswordError(''); }} placeholder="Enter 5-digit password" className={itemLessPasswordError ? 'border-destructive' : ''} />
               {itemLessPasswordError && <p className="text-sm text-destructive">{itemLessPasswordError}</p>}
             </div>
             <div className="space-y-2">
@@ -1757,8 +1757,8 @@ if (currentEditingOrderId) {
             <Button variant="outline" onClick={() => setItemLessTarget(null)}>Cancel</Button>
             <Button disabled={isItemLessSaving || (itemLessReason === 'other' && !itemLessDetails.trim())} onClick={async () => {
               if (!itemLessTarget) return;
-              if (!itemLessPassword.trim()) {
-                setItemLessPasswordError('Authorization password is required');
+              if (itemLessPassword.length !== 5) {
+                setItemLessPasswordError('Enter the 5-digit authorization PIN');
                 return;
               }
               setIsItemLessSaving(true);
@@ -1774,7 +1774,7 @@ if (currentEditingOrderId) {
                 // was what made removed items reappear until a manual refresh.
               } catch (error) {
                 const message = error instanceof Error ? error.message : 'Failed to record Item Less';
-                if (message.toLowerCase().includes('authorization password')) setItemLessPasswordError('Incorrect password');
+                if (message.toLowerCase().includes('authorization pin') || message.toLowerCase().includes('authorization password')) setItemLessPasswordError(message);
                 else toast.error(message);
               } finally { setIsItemLessSaving(false); }
             }}>{isItemLessSaving ? 'Saving...' : 'Confirm Item Less'}</Button>
