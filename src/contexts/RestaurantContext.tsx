@@ -41,7 +41,8 @@ const defaultSettings: RestaurantSettings = {
     logoUrl: '',
   },
   security: {
-    cancelOrderPassword: '12345',
+    cancelPinConfigured: false,
+    discountPinConfigured: false,
   },
   businessDay: {
     cutoffHour: 5,
@@ -167,7 +168,7 @@ interface RestaurantContextType {
   }) => Promise<Order | null>;
   settleOrder: (orderId: string, paymentMethod?: 'cash' | 'card' | 'mobile', tableId?: string) => Promise<void>;
   itemLess: (orderItemId: string, quantity: number, reason: ItemLessReason, details: string | undefined, disposition: 'not_prepared' | 'waste' | 'returned', authorizationPassword: string) => Promise<void>;
-  cancelOrder: (orderId: string, reason?: string) => Promise<void>;
+  cancelOrder: (orderId: string, reason?: string, authorizationPassword?: string) => Promise<void>;
   getTableOrder: (tableId: string) => Order | undefined;
   
   // Calculations
@@ -1029,11 +1030,11 @@ export function RestaurantProvider({ children }: { children: React.ReactNode }) 
     }
   }, [cart, data.orders, data.setOrders, fetchOrderWithItems, settings.invoice?.gstEnabled, settings.taxRate]);
 
-  const cancelOrderAction = useCallback(async (orderId: string, reason = 'Cancelled by POS') => {
+  const cancelOrderAction = useCallback(async (orderId: string, reason = 'Cancelled by POS', authorizationPassword?: string) => {
     if (!navigator.onLine) throw new Error('Order cancellation requires an online connection.');
     const order = data.orders.find((o) => o.id === orderId);
     const safeTableId = isUuid(order?.tableId) ? order?.tableId : undefined;
-    await cancelOrderControlled(orderId, reason);
+    await cancelOrderControlled(orderId, reason, authorizationPassword);
     await removeQueuedMutationsForOrder(orderId);
     data.setOrders((prev: Order[]) => prev.map((o) => o.id === orderId ? { ...o, status: 'cancelled' as const, operationalStatus: 'cancelled' } : o));
     data.setTables((prev: Table[]) => prev.map((t) => (t.currentOrderId === orderId || (safeTableId && t.id === safeTableId)) ? { ...t, status: 'available' as const, currentOrderId: undefined } : t));
