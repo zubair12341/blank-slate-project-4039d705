@@ -254,7 +254,8 @@ export interface InvoiceSettings {
 }
 
 export interface SecuritySettings {
-  cancelOrderPassword: string;
+  cancelPinConfigured: boolean;
+  discountPinConfigured: boolean;
 }
 
 export interface BusinessDaySettings {
