@@ -141,6 +141,8 @@ grant execute on function public.create_item_less(uuid,numeric,text,text,text,te
 revoke all on function public.create_item_less(uuid,numeric,text,text,text,text) from public,anon,authenticated;
 
 -- Customer ledger is permission-scoped, not "any authenticated user".
+drop policy if exists "customers_authenticated_all" on public.customers;
+drop policy if exists "customer_receipts_authenticated_all" on public.customer_receipts;
 drop policy if exists "Authenticated users can view customers" on public.customers;
 drop policy if exists "Authenticated users can manage customers" on public.customers;
 drop policy if exists "Authenticated users can view customer receipts" on public.customer_receipts;
