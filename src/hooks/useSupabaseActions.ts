@@ -464,7 +464,6 @@ export function useSupabaseActions() {
     if (updates.invoice?.showLogo !== undefined) dbUpdates.invoice_show_logo = updates.invoice.showLogo;
     if (updates.invoice?.gstEnabled !== undefined) dbUpdates.invoice_gst_enabled = updates.invoice.gstEnabled;
     if (updates.invoice?.logoUrl !== undefined) dbUpdates.invoice_logo_url = updates.invoice.logoUrl;
-    if (updates.security?.cancelOrderPassword !== undefined) dbUpdates.security_cancel_password = updates.security.cancelOrderPassword;
     if (updates.businessDay?.cutoffHour !== undefined) dbUpdates.business_day_cutoff_hour = updates.businessDay.cutoffHour;
     if (updates.businessDay?.cutoffMinute !== undefined) dbUpdates.business_day_cutoff_minute = updates.businessDay.cutoffMinute;
 
